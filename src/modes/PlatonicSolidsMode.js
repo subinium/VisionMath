@@ -1,4 +1,6 @@
 export class PlatonicSolidsMode {
+    name = 'Platonic Solids';
+
     constructor() {
         // Platonic solids only
         this.solids = ['tetrahedron', 'cube', 'octahedron', 'dodecahedron', 'icosahedron'];

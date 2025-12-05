@@ -1,4 +1,6 @@
 export class PendulumMode {
+    name = 'Pendulum';
+
     constructor() {
         this.origin = { x: 0.5, y: 0.15 };
         this.length = 0.5; // meters

@@ -1,4 +1,6 @@
 export class VectorAdditionMode {
+    name = 'Vector Addition';
+
     constructor() {
         this.origin = { x: 0.5, y: 0.5 };
         this.vectors = [

@@ -108,12 +108,7 @@ function App() {
     }
 
     const getModeName = (mode) => {
-        const name = mode.constructor.name
-        if (name === 'TriangleCentersMode') return 'Triangle Centers'
-        if (name === 'PlatonicSolidsMode') return 'Platonic Solids'
-        if (name === 'VectorAdditionMode') return 'Vector Addition'
-        if (name === 'PendulumMode') return 'Pendulum'
-        return name
+        return mode.name || mode.constructor.name
     }
 
     // Group modes by category

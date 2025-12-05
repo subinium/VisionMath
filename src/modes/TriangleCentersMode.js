@@ -1,4 +1,6 @@
 export class TriangleCentersMode {
+    name = 'Triangle Centers';
+
     constructor() {
         this.points = [];
         this.dragIndex = -1;
