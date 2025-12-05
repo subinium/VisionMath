@@ -179,7 +179,10 @@ function App() {
                     )}
 
                     <div className="credit-footer">
-                        <span>Created by </span>
+                        <a href="https://github.com/subinium/VisionMath" target="_blank" rel="noopener noreferrer">
+                            GitHub
+                        </a>
+                        <span> · Created by </span>
                         <a href="https://github.com/subinium" target="_blank" rel="noopener noreferrer">
                             @subinium
                         </a>
