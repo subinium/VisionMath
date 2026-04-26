@@ -18,71 +18,19 @@ export class LorenzMode {
 
         this.params = ['ρ', 'σ', 'β'];
         this.activeParam = 0;
-        this.mouseDown = false;
+        this.mouseDown = null;
         this.dragLast = null;
+        this._lastLeft = null;
+        this._lastW = 1; this._lastH = 1;
 
-        this.setupMouse();
         this.spawn();
-    }
-
-    setupMouse() {
-        const canvas = document.getElementById('overlay-canvas');
-        canvas.addEventListener('mousedown', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
-
-            const r = this.getParamButtonsRect(rect.width, rect.height);
-            if (my >= r.y && my <= r.y + r.h) {
-                for (let i = 0; i < this.params.length; i++) {
-                    const bx = r.startX + i * (r.w + r.gap);
-                    if (mx >= bx && mx <= bx + r.w) {
-                        this.activeParam = i;
-                        e.stopPropagation(); e.preventDefault();
-                        return;
-                    }
-                }
-            }
-
-            const sl = this.getSliderRect(rect.width, rect.height);
-            if (mx >= sl.x && mx <= sl.x + sl.w && my >= sl.y - 10 && my <= sl.y + sl.h + 10) {
-                this.mouseDown = 'slider';
-                this.setSliderFromX(mx, sl);
-                return;
-            }
-
-            this.mouseDown = 'rotate';
-            this.dragLast = { x: e.clientX, y: e.clientY };
-        });
-        canvas.addEventListener('mousemove', (e) => {
-            if (this.mouseDown === 'rotate' && this.dragLast) {
-                const dx = e.clientX - this.dragLast.x;
-                const dy = e.clientY - this.dragLast.y;
-                this.rot.y += dx * 0.008;
-                this.rot.x += dy * 0.008;
-                this.dragLast = { x: e.clientX, y: e.clientY };
-            } else if (this.mouseDown === 'slider') {
-                const rect = canvas.getBoundingClientRect();
-                const mx = e.clientX - rect.left;
-                const sl = this.getSliderRect(rect.width, rect.height);
-                this.setSliderFromX(mx, sl);
-            }
-        });
-        canvas.addEventListener('mouseup', () => {
-            this.mouseDown = false;
-            this.dragLast = null;
-        });
-        canvas.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            this.targetScale -= e.deltaY * 0.0008;
-            this.targetScale = Math.max(0.4, Math.min(2.5, this.targetScale));
-        }, { passive: false });
     }
 
     getParamButtonsRect(w, h) {
         const btnW = 60, btnH = 24, gap = 6;
         const totalW = this.params.length * btnW + (this.params.length - 1) * gap;
-        return { w: btnW, h: btnH, gap, startX: w * 0.5 - totalW / 2 - 80, y: h - 130 };
+        const startX = w * 0.5 - (totalW + 240) / 2;
+        return { w: btnW, h: btnH, gap, startX, y: h - 56 };
     }
 
     getSliderRect(w, h) {
@@ -96,26 +44,28 @@ export class LorenzMode {
 
     setSliderFromX(mx, sl) {
         const t = Math.max(0, Math.min(1, (mx - sl.x) / sl.w));
-        if (this.activeParam === 0) this.rho = 0 + t * 60;        // 0..60
-        else if (this.activeParam === 1) this.sigma = 1 + t * 25; // 1..26
-        else this.beta = 0.5 + t * 4.5;                            // 0.5..5
+        if (this.activeParam === 0) this.rho = t * 60;
+        else if (this.activeParam === 1) this.sigma = 1 + t * 25;
+        else this.beta = 0.5 + t * 4.5;
     }
 
     sliderValue() {
-        if (this.activeParam === 0) return (this.rho - 0) / 60;
+        if (this.activeParam === 0) return this.rho / 60;
         if (this.activeParam === 1) return (this.sigma - 1) / 25;
         return (this.beta - 0.5) / 4.5;
     }
 
     spawn() {
         this.particles = [];
-        // Cluster of points around (0.1, 0, 0) with tiny perturbation
         for (let i = 0; i < this.particleCount; i++) {
+            const hue = 180 + (i / this.particleCount) * 80;
             this.particles.push({
                 x: 0.1 + (Math.random() - 0.5) * 0.04,
                 y: 0 + (Math.random() - 0.5) * 0.04,
                 z: 0 + (Math.random() - 0.5) * 0.04,
-                hue: 180 + (i / this.particleCount) * 80,
+                hue,
+                colorTrail: `hsla(${hue.toFixed(0)}, 70%, 60%, `,
+                colorHead: `hsla(${hue.toFixed(0)}, 80%, 70%, `,
                 trail: []
             });
         }
@@ -126,6 +76,52 @@ export class LorenzMode {
         this.rot = { x: 0.7, y: 0.6 };
         this.scale = 1.0;
         this.targetScale = 1.0;
+        this.mouseDown = null;
+        this.dragLast = null;
+        this._lastLeft = null;
+    }
+
+    onPointerDown(mx, my, vw, vh, e) {
+        const r = this.getParamButtonsRect(vw, vh);
+        if (my >= r.y && my <= r.y + r.h) {
+            for (let i = 0; i < this.params.length; i++) {
+                const bx = r.startX + i * (r.w + r.gap);
+                if (mx >= bx && mx <= bx + r.w) { this.activeParam = i; return; }
+            }
+        }
+
+        const sl = this.getSliderRect(vw, vh);
+        if (mx >= sl.x && mx <= sl.x + sl.w && my >= sl.y - 10 && my <= sl.y + sl.h + 10) {
+            this.mouseDown = 'slider';
+            this.setSliderFromX(mx, sl);
+            return;
+        }
+
+        this.mouseDown = 'rotate';
+        this.dragLast = { x: e.clientX, y: e.clientY };
+    }
+
+    onPointerMove(mx, _my, vw, vh, e) {
+        if (this.mouseDown === 'rotate' && this.dragLast) {
+            const dx = e.clientX - this.dragLast.x;
+            const dy = e.clientY - this.dragLast.y;
+            this.rot.y += dx * 0.008;
+            this.rot.x += dy * 0.008;
+            this.dragLast = { x: e.clientX, y: e.clientY };
+        } else if (this.mouseDown === 'slider') {
+            const sl = this.getSliderRect(vw, vh);
+            this.setSliderFromX(mx, sl);
+        }
+    }
+
+    onPointerUp() {
+        this.mouseDown = null;
+        this.dragLast = null;
+    }
+
+    onWheel(deltaY) {
+        this.targetScale -= deltaY * 0.0008;
+        this.targetScale = Math.max(0.4, Math.min(2.5, this.targetScale));
     }
 
     deriv(x, y, z) {
@@ -146,8 +142,7 @@ export class LorenzMode {
         p.z += (dt / 6) * (k1z + 2 * k2z + 2 * k3z + k4z);
     }
 
-    update(_results, { leftHand, rightHand, leftPinch, rightPinch }) {
-        // Left hand: orbit rotation. Use index tip x/y deltas via pinch midpoint motion when pinching.
+    update(_results, { leftHand, leftPinch, rightPinch }) {
         if (leftPinch && leftPinch.isPinching) {
             if (this._lastLeft) {
                 this.rot.y += (leftPinch.x - this._lastLeft.x) * 4;
@@ -158,23 +153,18 @@ export class LorenzMode {
             this._lastLeft = null;
         }
 
-        // Right hand: tune ρ via thumb-index distance
-        if (rightHand && rightPinch) {
+        if (rightPinch && rightPinch.isPinching) {
             this.rho = 5 + Math.min(55, Math.max(0, (rightPinch.distance - 0.02) * 350));
         }
 
-        // Auto orbit when no input
         if (!leftHand && !this.mouseDown) {
             this.rot.y += 0.003;
         }
 
         for (let i = 0; i < this.subSteps; i++) {
-            for (const p of this.particles) {
-                this.step(p, this.dt);
-            }
+            for (const p of this.particles) this.step(p, this.dt);
         }
 
-        // Push trails
         for (const p of this.particles) {
             p.trail.push({ x: p.x, y: p.y, z: p.z });
             if (p.trail.length > this.trailLen) p.trail.shift();
@@ -184,16 +174,13 @@ export class LorenzMode {
     }
 
     project(x, y, z, w, h) {
-        // Center attractor: roughly z mean ~25, so subtract
-        x = x; y = y; z = z - 25;
-        // Rotate around X
+        const zc = z - 25;
         const cosX = Math.cos(this.rot.x), sinX = Math.sin(this.rot.x);
-        let y1 = y * cosX - z * sinX;
-        let z1 = y * sinX + z * cosX;
-        // Rotate around Y
+        const y1 = y * cosX - zc * sinX;
+        const z1 = y * sinX + zc * cosX;
         const cosY = Math.cos(this.rot.y), sinY = Math.sin(this.rot.y);
-        let x1 = x * cosY + z1 * sinY;
-        let z2 = -x * sinY + z1 * cosY;
+        const x1 = x * cosY + z1 * sinY;
+        const z2 = -x * sinY + z1 * cosY;
 
         const f = Math.min(w, h) * 0.018 * this.scale;
         const persp = 60 / (60 + z2);
@@ -209,37 +196,35 @@ export class LorenzMode {
         this._lastW = w; this._lastH = h;
         this.drawGrid(ctx, w, h);
 
-        // Project all current points
         const projP = this.particles.map(p => ({
             head: this.project(p.x, p.y, p.z, w, h),
             trail: p.trail.map(pt => this.project(pt.x, pt.y, pt.z, w, h)),
-            hue: p.hue
+            colorTrail: p.colorTrail,
+            colorHead: p.colorHead
         }));
 
-        // Draw trails, sorted by depth (back first)
         projP.sort((a, b) => a.head.z - b.head.z);
 
         for (const p of projP) {
             ctx.lineWidth = 1.1;
-            for (let i = 1; i < p.trail.length; i++) {
+            const tl = p.trail.length;
+            for (let i = 1; i < tl; i++) {
                 const a = p.trail[i - 1], b = p.trail[i];
-                const t = i / p.trail.length;
-                ctx.strokeStyle = `hsla(${p.hue}, 70%, 60%, ${t * 0.45})`;
+                ctx.strokeStyle = p.colorTrail + (i / tl * 0.45).toFixed(3) + ')';
                 ctx.beginPath();
                 ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
                 ctx.stroke();
             }
-            // Head dot
-            ctx.fillStyle = `hsla(${p.hue}, 80%, 70%, ${0.6 + p.head.persp * 0.4})`;
+            ctx.fillStyle = p.colorHead + (0.6 + p.head.persp * 0.4).toFixed(3) + ')';
             ctx.beginPath();
             ctx.arc(p.head.x, p.head.y, 1.4 + p.head.persp * 1.6, 0, Math.PI * 2);
             ctx.fill();
         }
 
         this.drawAxes(ctx, w, h);
-        this.drawSpread(ctx, w, h);
+        this.drawSpread(ctx, h);
         this.drawSlider(ctx, w, h);
-        this.drawInfoPanel(ctx, w, h);
+        this.drawInfoPanel(ctx, w);
     }
 
     drawAxes(ctx, w, h) {
@@ -263,23 +248,24 @@ export class LorenzMode {
         drawA(Z, 'z', 'rgba(192, 132, 252, 0.7)');
     }
 
-    drawSpread(ctx, _w, h) {
-        // Average spread of particles (max pairwise distance approx via std dev)
+    drawSpread(ctx, h) {
         let mx = 0, my = 0, mz = 0;
-        for (const p of this.particles) { mx += p.x; my += p.y; mz += p.z; }
         const N = this.particles.length;
+        for (const p of this.particles) { mx += p.x; my += p.y; mz += p.z; }
         mx /= N; my /= N; mz /= N;
         let s = 0;
         for (const p of this.particles) {
-            s += (p.x - mx) ** 2 + (p.y - my) ** 2 + (p.z - mz) ** 2;
+            const dx = p.x - mx, dy = p.y - my, dz = p.z - mz;
+            s += dx * dx + dy * dy + dz * dz;
         }
         const std = Math.sqrt(s / N);
 
-        const x = 20, y = h - 78;
+        const x = 16, y = h - 96;
         const barW = 200, barH = 8;
+
         ctx.fillStyle = 'rgba(13, 19, 33, 0.85)';
         ctx.beginPath();
-        ctx.roundRect(x - 10, y - 24, barW + 20, barH + 36, 8);
+        ctx.roundRect(x - 10, y - 24, barW + 110, barH + 36, 8);
         ctx.fill();
         ctx.strokeStyle = 'rgba(148, 163, 184, 0.18)';
         ctx.lineWidth = 1;
@@ -290,7 +276,7 @@ export class LorenzMode {
         ctx.textAlign = 'left';
         ctx.fillText('SENSITIVITY  σ_xyz', x, y - 8);
 
-        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
         ctx.beginPath();
         ctx.roundRect(x, y, barW, barH, 4);
         ctx.fill();
@@ -309,12 +295,11 @@ export class LorenzMode {
 
     drawSlider(ctx, w, h) {
         const r = this.getParamButtonsRect(w, h);
-        // Param buttons
         this.params.forEach((p, i) => {
             const x = r.startX + i * (r.w + r.gap);
             const active = i === this.activeParam;
-            ctx.fillStyle = active ? 'rgba(125, 211, 252, 0.16)' : 'rgba(255,255,255,0.04)';
-            ctx.strokeStyle = active ? 'rgba(125, 211, 252, 0.5)' : 'rgba(255,255,255,0.10)';
+            ctx.fillStyle = active ? 'rgba(125, 211, 252, 0.16)' : 'rgba(255, 255, 255, 0.04)';
+            ctx.strokeStyle = active ? 'rgba(125, 211, 252, 0.5)' : 'rgba(255, 255, 255, 0.10)';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.roundRect(x, r.y, r.w, r.h, 6);
@@ -326,7 +311,7 @@ export class LorenzMode {
         });
 
         const sl = this.getSliderRect(w, h);
-        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
         ctx.beginPath();
         ctx.roundRect(sl.x, sl.y, sl.w, sl.h, 4);
         ctx.fill();
@@ -342,9 +327,9 @@ export class LorenzMode {
         ctx.fill();
     }
 
-    drawInfoPanel(ctx, w, _h) {
+    drawInfoPanel(ctx, w) {
         const panelW = 240, panelH = 200;
-        const x = w - panelW - 20, y = 76;
+        const x = w - panelW - 16, y = 16;
 
         ctx.fillStyle = 'rgba(13, 19, 33, 0.92)';
         ctx.beginPath();
@@ -365,9 +350,9 @@ export class LorenzMode {
 
         ctx.fillStyle = '#fff';
         ctx.font = '500 11px "JetBrains Mono", monospace';
-        ctx.fillText("dx/dt = σ(y − x)", x + 18, y + 66);
-        ctx.fillText("dy/dt = x(ρ − z) − y", x + 18, y + 84);
-        ctx.fillText("dz/dt = xy − βz", x + 18, y + 102);
+        ctx.fillText('dx/dt = σ(y − x)', x + 18, y + 66);
+        ctx.fillText('dy/dt = x(ρ − z) − y', x + 18, y + 84);
+        ctx.fillText('dz/dt = xy − βz', x + 18, y + 102);
 
         ctx.fillStyle = '#94a3b8';
         ctx.font = '600 10px Inter';
@@ -390,12 +375,8 @@ export class LorenzMode {
         ctx.strokeStyle = 'rgba(148, 163, 184, 0.03)';
         ctx.lineWidth = 1;
         const step = Math.min(w, h) / 22;
-        for (let x = 0; x < w; x += step) {
-            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-        }
-        for (let y = 0; y < h; y += step) {
-            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-        }
+        for (let x = 0; x < w; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+        for (let y = 0; y < h; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
     }
 
     getControlsHTML() {

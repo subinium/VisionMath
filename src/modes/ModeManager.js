@@ -9,6 +9,15 @@ import { LorenzMode } from './LorenzMode';
 import { MandelbrotMode } from './MandelbrotMode';
 import { Renderer } from '../renderer';
 
+// Mirrors App.css grid layout. Keep in sync if the chrome changes.
+const CHROME = {
+    pad: 14,
+    sidebarW: 224,
+    gap: 14,
+    topbarH: 52,
+    controlsH: 64
+};
+
 export class ModeManager {
     constructor(canvas, ctx) {
         this.canvas = canvas;
@@ -17,94 +26,157 @@ export class ModeManager {
         this.currentMode = null;
         this.currentModeIndex = -1;
         this.modes = [];
+        this.viewport = { x: 0, y: 0, w: 1, h: 1 };
 
-        const register = (mode, category) => {
-            mode.category = category;
-            this.modes.push(mode);
-        };
+        const reg = (mode, category) => { mode.category = category; this.modes.push(mode); };
+        reg(new TriangleCentersMode(),  'GEOMETRY');
+        reg(new PlatonicSolidsMode(),   'GEOMETRY');
+        reg(new LinearTransformMode(),  'ALGEBRA');
+        reg(new FourierMode(),          'ANALYSIS');
+        reg(new ComplexMappingMode(),   'ANALYSIS');
+        reg(new VectorAdditionMode(),   'PHYSICS');
+        reg(new PendulumMode(),         'PHYSICS');
+        reg(new LorenzMode(),           'PHYSICS');
+        reg(new MandelbrotMode(),       'FRACTALS');
 
-        register(new TriangleCentersMode(),  'GEOMETRY');
-        register(new PlatonicSolidsMode(),   'GEOMETRY');
-        register(new LinearTransformMode(),  'ALGEBRA');
-        register(new FourierMode(),          'ANALYSIS');
-        register(new ComplexMappingMode(),   'ANALYSIS');
-        register(new VectorAdditionMode(),   'PHYSICS');
-        register(new PendulumMode(),         'PHYSICS');
-        register(new LorenzMode(),           'PHYSICS');
-        register(new MandelbrotMode(),       'FRACTALS');
+        this._setupListeners();
     }
 
-    getModes() {
-        return this.modes;
+    _setupListeners() {
+        const c = this.canvas;
+        c.addEventListener('mousedown',  (e) => this._dispatchDown(e));
+        c.addEventListener('mousemove',  (e) => this._dispatchMove(e));
+        c.addEventListener('mouseup',    (e) => this._dispatchUp(e));
+        c.addEventListener('mouseleave', (e) => this._dispatchUp(e));
+        c.addEventListener('wheel',      (e) => this._dispatchWheel(e), { passive: false });
     }
+
+    _local(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+        const x = cx - this.viewport.x;
+        const y = cy - this.viewport.y;
+        const inside = x >= 0 && y >= 0 && x <= this.viewport.w && y <= this.viewport.h;
+        return { x, y, inside };
+    }
+
+    _dispatchDown(e) {
+        if (!this.currentMode?.onPointerDown) return;
+        const { x, y, inside } = this._local(e);
+        if (!inside) return;
+        this.currentMode.onPointerDown(x, y, this.viewport.w, this.viewport.h, e);
+    }
+
+    _dispatchMove(e) {
+        if (!this.currentMode?.onPointerMove) return;
+        const { x, y } = this._local(e);
+        this.currentMode.onPointerMove(x, y, this.viewport.w, this.viewport.h, e);
+    }
+
+    _dispatchUp(e) {
+        if (this.currentMode?.onPointerUp) this.currentMode.onPointerUp(e);
+    }
+
+    _dispatchWheel(e) {
+        if (!this.currentMode?.onWheel) return;
+        const { x, y, inside } = this._local(e);
+        if (!inside) return;
+        e.preventDefault();
+        this.currentMode.onWheel(e.deltaY, x, y, this.viewport.w, this.viewport.h, e);
+    }
+
+    getModes() { return this.modes; }
 
     isPinching(hand) {
-        if (!hand) return { isPinching: false, x: 0, y: 0 };
-        const thumb = hand[4];
-        const index = hand[8];
-        const dx = thumb.x - index.x;
-        const dy = thumb.y - index.y;
-        const dz = (thumb.z || 0) - (index.z || 0);
+        if (!hand) return { isPinching: false, x: 0, y: 0, distance: Infinity };
+        const t = hand[4], i = hand[8];
+        const dx = t.x - i.x, dy = t.y - i.y, dz = (t.z || 0) - (i.z || 0);
         const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        const midX = (thumb.x + index.x) / 2;
-        const midY = (thumb.y + index.y) / 2;
         return {
             isPinching: dist < 0.08,
-            x: 1 - midX,
-            y: midY,
+            x: 1 - (t.x + i.x) / 2,
+            y: (t.y + i.y) / 2,
             distance: dist
         };
     }
 
     getHands(results) {
         let leftHand = null, rightHand = null;
-        if (results.hands && results.hands.landmarks && results.hands.handednesses) {
+        if (results.hands?.landmarks && results.hands.handednesses) {
             results.hands.landmarks.forEach((hand, i) => {
-                const handedness = results.hands.handednesses[i]?.[0]?.categoryName;
-                if (handedness === 'Right') leftHand = hand;
-                else if (handedness === 'Left') rightHand = hand;
+                const h = results.hands.handednesses[i]?.[0]?.categoryName;
+                if (h === 'Right') leftHand = hand;
+                else if (h === 'Left') rightHand = hand;
             });
         }
         return { leftHand, rightHand };
     }
 
+    _toViewportPinch(p, canvasW, canvasH) {
+        if (!p.isPinching) return p;
+        const v = this.viewport;
+        return {
+            isPinching: true,
+            x: (p.x * canvasW - v.x) / v.w,
+            y: (p.y * canvasH - v.y) / v.h,
+            distance: p.distance
+        };
+    }
+
     update(results) {
         this.lastResults = results;
         const { leftHand, rightHand } = this.getHands(results);
-        const leftPinch = this.isPinching(leftHand);
-        const rightPinch = this.isPinching(rightHand);
+        const lp = this.isPinching(leftHand);
+        const rp = this.isPinching(rightHand);
+
+        const rect = this.canvas.getBoundingClientRect();
+        const leftPinch  = this._toViewportPinch(lp, rect.width, rect.height);
+        const rightPinch = this._toViewportPinch(rp, rect.width, rect.height);
 
         if (this.currentMode) {
             this.currentMode.update(results, { leftHand, rightHand, leftPinch, rightPinch });
         }
     }
 
-    draw(w, h) {
-        this.ctx.clearRect(0, 0, w, h);
+    computeViewport(w, h) {
+        const x = CHROME.pad + CHROME.sidebarW + CHROME.gap;
+        const y = CHROME.pad + CHROME.topbarH + CHROME.gap;
+        const right = w - CHROME.pad;
+        const bottom = h - CHROME.pad - CHROME.controlsH - CHROME.gap;
+        return { x, y, w: Math.max(1, right - x), h: Math.max(1, bottom - y) };
+    }
+
+    draw(canvasW, canvasH) {
+        this.viewport = this.computeViewport(canvasW, canvasH);
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, canvasW, canvasH);
 
         if (this.currentMode) {
-            this.currentMode.draw(this.ctx, w, h);
+            const v = this.viewport;
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(v.x, v.y, v.w, v.h);
+            ctx.clip();
+            ctx.translate(v.x, v.y);
+            this.currentMode.draw(ctx, v.w, v.h);
+            ctx.restore();
         }
 
-        if (this.lastResults && this.lastResults.hands && this.lastResults.hands.landmarks) {
+        if (this.lastResults?.hands?.landmarks) {
             this.lastResults.hands.landmarks.forEach(hand => {
-                this.renderer.drawSkeleton(this.ctx, w, h, hand, this.renderer.handConnections);
-                this.renderer.drawFingerRings(this.ctx, w, h, hand);
+                this.renderer.drawSkeleton(ctx, canvasW, canvasH, hand, this.renderer.handConnections);
+                this.renderer.drawFingerRings(ctx, canvasW, canvasH, hand);
             });
         }
     }
 
     selectMode(index) {
-        if (this.modes[index]) {
-            if (this.currentMode && typeof this.currentMode.deactivate === 'function') {
-                this.currentMode.deactivate();
-            }
-            this.currentMode = this.modes[index];
-            this.currentModeIndex = index;
-            this.currentMode.reset();
-            if (typeof this.currentMode.activate === 'function') {
-                this.currentMode.activate();
-            }
-        }
+        if (!this.modes[index]) return;
+        if (this.currentMode?.deactivate) this.currentMode.deactivate();
+        this.currentMode = this.modes[index];
+        this.currentModeIndex = index;
+        this.currentMode.reset();
+        if (this.currentMode.activate) this.currentMode.activate();
     }
 }

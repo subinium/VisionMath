@@ -2,69 +2,27 @@ export class LinearTransformMode {
     name = 'Linear Transform';
 
     constructor() {
-        // Basis vectors stored in math coordinates (units), origin = canvas center
         this.iHat = { x: 1, y: 0 };
         this.jHat = { x: 0, y: 1 };
-        this.dragging = null; // 'i' | 'j' | null
+        this.dragging = null;
         this.mouseDown = false;
-        this.unit = 80; // px per unit (auto-overridden in draw based on size)
         this.presets = ['Reset', 'Rotate 30°', 'Shear', 'Scale', 'Reflect'];
-        this.setupMouse();
-    }
-
-    setupMouse() {
-        const canvas = document.getElementById('overlay-canvas');
-        canvas.addEventListener('mousedown', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
-
-            // Preset buttons
-            const btn = this.getPresetRect(rect.width, rect.height);
-            if (my >= btn.y && my <= btn.y + btn.h) {
-                for (let i = 0; i < this.presets.length; i++) {
-                    const bx = btn.startX + i * (btn.w + btn.gap);
-                    if (mx >= bx && mx <= bx + btn.w) {
-                        this.applyPreset(i);
-                        e.stopPropagation(); e.preventDefault();
-                        return;
-                    }
-                }
-            }
-
-            this.mouseDown = true;
-            const which = this.pickHandle(mx, my, rect.width, rect.height);
-            if (which) this.dragging = which;
-        });
-        canvas.addEventListener('mousemove', (e) => {
-            if (this.mouseDown && this.dragging) {
-                const rect = canvas.getBoundingClientRect();
-                const mx = e.clientX - rect.left;
-                const my = e.clientY - rect.top;
-                this.setHandle(this.dragging, mx, my, rect.width, rect.height);
-            }
-        });
-        canvas.addEventListener('mouseup', () => {
-            this.mouseDown = false;
-            this.dragging = null;
-        });
+        this._lastW = 1; this._lastH = 1;
     }
 
     getPresetRect(w, h) {
         const btnW = 96, btnH = 28, gap = 8;
         const totalW = this.presets.length * btnW + (this.presets.length - 1) * gap;
-        return { w: btnW, h: btnH, gap, startX: (w - totalW) / 2, y: h - 130 };
+        return { w: btnW, h: btnH, gap, startX: (w - totalW) / 2, y: h - 56 };
     }
 
     pickHandle(px, py, w, h) {
         const cx = w / 2, cy = h / 2;
         const u = this.computeUnit(w, h);
-        const ix = cx + this.iHat.x * u;
-        const iy = cy - this.iHat.y * u;
-        const jx = cx + this.jHat.x * u;
-        const jy = cy - this.jHat.y * u;
-        if (Math.hypot(px - ix, py - iy) < 18) return 'i';
-        if (Math.hypot(px - jx, py - jy) < 18) return 'j';
+        const ix = cx + this.iHat.x * u, iy = cy - this.iHat.y * u;
+        const jx = cx + this.jHat.x * u, jy = cy - this.jHat.y * u;
+        if (Math.sqrt((px - ix) ** 2 + (py - iy) ** 2) < 18) return 'i';
+        if (Math.sqrt((px - jx) ** 2 + (py - jy) ** 2) < 18) return 'j';
         return null;
     }
 
@@ -77,9 +35,7 @@ export class LinearTransformMode {
         if (which === 'j') this.jHat = { x, y };
     }
 
-    computeUnit(w, h) {
-        return Math.min(w, h) / 11;
-    }
+    computeUnit(w, h) { return Math.min(w, h) / 11; }
 
     applyPreset(i) {
         if (i === 0) { this.iHat = { x: 1, y: 0 }; this.jHat = { x: 0, y: 1 }; }
@@ -97,50 +53,47 @@ export class LinearTransformMode {
         this.iHat = { x: 1, y: 0 };
         this.jHat = { x: 0, y: 1 };
         this.dragging = null;
+        this.mouseDown = false;
     }
 
+    onPointerDown(mx, my, vw, vh) {
+        const btn = this.getPresetRect(vw, vh);
+        if (my >= btn.y && my <= btn.y + btn.h) {
+            for (let i = 0; i < this.presets.length; i++) {
+                const bx = btn.startX + i * (btn.w + btn.gap);
+                if (mx >= bx && mx <= bx + btn.w) { this.applyPreset(i); return; }
+            }
+        }
+        this.mouseDown = true;
+        const which = this.pickHandle(mx, my, vw, vh);
+        if (which) this.dragging = which;
+    }
+
+    onPointerMove(mx, my, vw, vh) {
+        if (this.mouseDown && this.dragging) this.setHandle(this.dragging, mx, my, vw, vh);
+    }
+
+    onPointerUp() { this.mouseDown = false; this.dragging = null; }
+
     update(_results, { leftPinch, rightPinch }) {
-        const handlePinch = (pinch, w, h) => {
-            if (!pinch || !pinch.isPinching) return;
-            const px = pinch.x * w;
-            const py = pinch.y * h;
-            if (this.dragging) {
-                this.setHandle(this.dragging, px, py, w, h);
-            } else {
+        const w = this._lastW, h = this._lastH;
+        const apply = (p) => {
+            if (!p?.isPinching) return;
+            const px = p.x * w, py = p.y * h;
+            if (this.dragging) this.setHandle(this.dragging, px, py, w, h);
+            else {
                 const which = this.pickHandle(px, py, w, h);
                 if (which) this.dragging = which;
             }
         };
-        const w = this._lastW || window.innerWidth;
-        const h = this._lastH || window.innerHeight;
-        // Prefer left pinch for î, right for ĵ when nothing is held
-        if (leftPinch.isPinching && !this.dragging) {
-            const which = this.pickHandle(leftPinch.x * w, leftPinch.y * h, w, h);
-            if (which) this.dragging = which;
-        }
-        handlePinch(leftPinch, w, h);
-        handlePinch(rightPinch, w, h);
-        if (!leftPinch.isPinching && !rightPinch.isPinching && !this.mouseDown) {
-            this.dragging = null;
-        }
+        if (leftPinch.isPinching) apply(leftPinch);
+        else if (rightPinch.isPinching) apply(rightPinch);
+        if (!leftPinch.isPinching && !rightPinch.isPinching && !this.mouseDown) this.dragging = null;
     }
 
-    matrix() {
-        return {
-            a: this.iHat.x, b: this.jHat.x,
-            c: this.iHat.y, d: this.jHat.y
-        };
-    }
-
-    determinant() {
-        const m = this.matrix();
-        return m.a * m.d - m.b * m.c;
-    }
-
-    trace() {
-        const m = this.matrix();
-        return m.a + m.d;
-    }
+    matrix() { return { a: this.iHat.x, b: this.jHat.x, c: this.iHat.y, d: this.jHat.y }; }
+    determinant() { const m = this.matrix(); return m.a * m.d - m.b * m.c; }
+    trace() { const m = this.matrix(); return m.a + m.d; }
 
     eigen() {
         const m = this.matrix();
@@ -149,12 +102,10 @@ export class LinearTransformMode {
         const disc = tr * tr - 4 * det;
         if (disc < 0) return { real: false, l1: tr / 2, l2: tr / 2, im: Math.sqrt(-disc) / 2, vecs: [] };
         const s = Math.sqrt(disc);
-        const l1 = (tr + s) / 2;
-        const l2 = (tr - s) / 2;
+        const l1 = (tr + s) / 2, l2 = (tr - s) / 2;
         const vec = (lam) => {
-            // (M - λI)v = 0 → use first row: (a-λ)x + b y = 0 → v = (-b, a-λ) or (λ-d, c)
             const v = (Math.abs(m.b) > 1e-6) ? { x: -m.b, y: m.a - lam } : { x: lam - m.d, y: m.c };
-            const len = Math.hypot(v.x, v.y) || 1;
+            const len = Math.sqrt(v.x * v.x + v.y * v.y) || 1;
             return { x: v.x / len, y: v.y / len };
         };
         return { real: true, l1, l2, vecs: [vec(l1), vec(l2)] };
@@ -170,30 +121,26 @@ export class LinearTransformMode {
         const cx = w / 2, cy = h / 2;
         const u = this.computeUnit(w, h);
 
-        // Background grid (unmoved)
         this.drawBackgroundGrid(ctx, w, h, u, cx, cy);
+        this.drawTransformedGrid(ctx, u, cx, cy);
 
-        // Transformed grid
-        this.drawTransformedGrid(ctx, w, h, u, cx, cy);
-
-        // Determinant region (parallelogram of î, ĵ)
         const det = this.determinant();
         const ix = cx + this.iHat.x * u, iy = cy - this.iHat.y * u;
         const jx = cx + this.jHat.x * u, jy = cy - this.jHat.y * u;
         const sx = ix + (jx - cx), sy = iy + (jy - cy);
 
         ctx.beginPath();
-        ctx.moveTo(cx, cy); ctx.lineTo(ix, iy); ctx.lineTo(sx, sy); ctx.lineTo(jx, jy); ctx.closePath();
+        ctx.moveTo(cx, cy); ctx.lineTo(ix, iy); ctx.lineTo(sx, sy); ctx.lineTo(jx, jy);
+        ctx.closePath();
         ctx.fillStyle = det >= 0 ? 'rgba(125, 211, 252, 0.13)' : 'rgba(251, 113, 133, 0.16)';
         ctx.fill();
         ctx.strokeStyle = det >= 0 ? 'rgba(125, 211, 252, 0.55)' : 'rgba(251, 113, 133, 0.6)';
         ctx.lineWidth = 1.25;
         ctx.stroke();
 
-        // Eigen-lines if real
         const eig = this.eigen();
         if (eig.real) {
-            const drawEigenLine = (v, color) => {
+            const drawEig = (v, color) => {
                 const reach = Math.max(w, h);
                 ctx.strokeStyle = color;
                 ctx.setLineDash([4, 4]);
@@ -204,23 +151,19 @@ export class LinearTransformMode {
                 ctx.stroke();
                 ctx.setLineDash([]);
             };
-            drawEigenLine(eig.vecs[0], 'rgba(192, 132, 252, 0.7)');
-            if (Math.abs(eig.l1 - eig.l2) > 1e-6) {
-                drawEigenLine(eig.vecs[1], 'rgba(251, 191, 36, 0.7)');
-            }
+            drawEig(eig.vecs[0], 'rgba(192, 132, 252, 0.7)');
+            if (Math.abs(eig.l1 - eig.l2) > 1e-6) drawEig(eig.vecs[1], 'rgba(251, 191, 36, 0.7)');
         }
 
-        // Basis vectors
         this.drawArrow(ctx, cx, cy, ix, iy, '#fb7185', 'î', this.dragging === 'i');
         this.drawArrow(ctx, cx, cy, jx, jy, '#7dd3fc', 'ĵ', this.dragging === 'j');
 
-        // Origin point
         ctx.beginPath();
         ctx.arc(cx, cy, 4, 0, Math.PI * 2);
         ctx.fillStyle = '#fff';
         ctx.fill();
 
-        this.drawInfoPanel(ctx, w, h, eig);
+        this.drawInfoPanel(ctx, w, eig);
         this.drawPresets(ctx, w, h);
     }
 
@@ -230,15 +173,12 @@ export class LinearTransformMode {
         const range = Math.ceil(Math.max(w, h) / u) + 1;
         for (let k = -range; k <= range; k++) {
             ctx.beginPath();
-            ctx.moveTo(cx + k * u, 0);
-            ctx.lineTo(cx + k * u, h);
+            ctx.moveTo(cx + k * u, 0); ctx.lineTo(cx + k * u, h);
             ctx.stroke();
             ctx.beginPath();
-            ctx.moveTo(0, cy + k * u);
-            ctx.lineTo(w, cy + k * u);
+            ctx.moveTo(0, cy + k * u); ctx.lineTo(w, cy + k * u);
             ctx.stroke();
         }
-        // Axes
         ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
         ctx.beginPath();
         ctx.moveTo(0, cy); ctx.lineTo(w, cy);
@@ -246,11 +186,10 @@ export class LinearTransformMode {
         ctx.stroke();
     }
 
-    drawTransformedGrid(ctx, _w, _h, u, cx, cy) {
+    drawTransformedGrid(ctx, u, cx, cy) {
         const range = 8;
         ctx.strokeStyle = 'rgba(125, 211, 252, 0.32)';
         ctx.lineWidth = 1;
-        // Lines parallel to î
         for (let k = -range; k <= range; k++) {
             const p1 = this.apply({ x: -range, y: k });
             const p2 = this.apply({ x: range, y: k });
@@ -259,7 +198,6 @@ export class LinearTransformMode {
             ctx.lineTo(cx + p2.x * u, cy - p2.y * u);
             ctx.stroke();
         }
-        // Lines parallel to ĵ
         for (let k = -range; k <= range; k++) {
             const p1 = this.apply({ x: k, y: -range });
             const p2 = this.apply({ x: k, y: range });
@@ -272,7 +210,7 @@ export class LinearTransformMode {
 
     drawArrow(ctx, x1, y1, x2, y2, color, label, active) {
         const dx = x2 - x1, dy = y2 - y1;
-        const len = Math.hypot(dx, dy);
+        const len = Math.sqrt(dx * dx + dy * dy);
         if (len < 1) return;
         const ang = Math.atan2(dy, dx);
         ctx.strokeStyle = color;
@@ -310,8 +248,8 @@ export class LinearTransformMode {
         const btn = this.getPresetRect(w, h);
         this.presets.forEach((p, i) => {
             const x = btn.startX + i * (btn.w + btn.gap);
-            ctx.fillStyle = 'rgba(255,255,255,0.04)';
-            ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.roundRect(x, btn.y, btn.w, btn.h, 6);
@@ -324,9 +262,9 @@ export class LinearTransformMode {
         });
     }
 
-    drawInfoPanel(ctx, w, _h, eig) {
+    drawInfoPanel(ctx, w, eig) {
         const panelW = 290, panelH = 240;
-        const x = w - panelW - 20, y = 76;
+        const x = w - panelW - 16, y = 16;
 
         ctx.fillStyle = 'rgba(13, 19, 33, 0.92)';
         ctx.beginPath();
@@ -349,23 +287,22 @@ export class LinearTransformMode {
         ctx.font = '600 10px Inter';
         ctx.fillText('MATRIX  M', x + 18, y + 46);
 
-        // Pretty matrix
+        ctx.fillStyle = '#cbd5e1';
+        ctx.font = '400 22px "JetBrains Mono", monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('[', x + 18, y + 88);
+        ctx.fillText(']', x + 18 + 200, y + 88);
+
         ctx.font = '500 13px "JetBrains Mono", monospace';
         ctx.fillStyle = '#e2e8f0';
         const cell = (val, col, row) => {
             ctx.textAlign = 'right';
             ctx.fillText(val.toFixed(2).padStart(6), x + 90 + col * 64, y + 76 + row * 22);
         };
-        ctx.fillStyle = '#cbd5e1';
-        ctx.font = '400 22px "JetBrains Mono", monospace';
-        ctx.textAlign = 'left';
-        ctx.fillText('[', x + 18, y + 88);
-        ctx.fillText(']', x + 18 + 200, y + 88);
-        ctx.font = '500 13px "JetBrains Mono", monospace';
         cell(m.a, 0, 0); cell(m.b, 1, 0);
         cell(m.c, 0, 1); cell(m.d, 1, 1);
 
-        // Stats
+        ctx.textAlign = 'left';
         ctx.fillStyle = '#94a3b8';
         ctx.font = '600 10px Inter';
         ctx.fillText('SCALARS', x + 18, y + 132);
@@ -397,8 +334,8 @@ export class LinearTransformMode {
 
     getControlsHTML() {
         return `
-            <div class="control-item"><span class="icon">🤏</span><span class="text">Pinch î (red) or ĵ (cyan) to drag</span></div>
-            <div class="control-item"><span class="icon">🖱️</span><span class="text">Click vector tips to grab</span></div>
+            <div class="control-item"><span class="icon">🤏</span><span class="text">Pinch î (red) or ĵ (cyan)</span></div>
+            <div class="control-item"><span class="icon">🖱️</span><span class="text">Drag vector tips</span></div>
             <div class="control-item"><span class="icon">⏷</span><span class="text">Presets along the bottom</span></div>
         `;
     }

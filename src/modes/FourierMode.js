@@ -14,48 +14,18 @@ export class FourierMode {
         this.mouseDown = false;
         this.presetButtons = ['Square', 'Sawtooth', 'Triangle', 'Pulse', 'Custom'];
         this.activePresetIdx = 0;
+        this._lastW = 1; this._lastH = 1;
         this.loadPreset(this.preset);
-        this.setupMouse();
     }
 
-    setupMouse() {
-        const canvas = document.getElementById('overlay-canvas');
-        canvas.addEventListener('mousedown', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
+    getPresetRect(w, h) {
+        const btnW = 86, btnH = 26, gap = 6;
+        const totalW = this.presetButtons.length * btnW + (this.presetButtons.length - 1) * gap;
+        return { w: btnW, h: btnH, gap, startX: (w - totalW) / 2, y: h - 56 };
+    }
 
-            const presetRect = this.getPresetRect(rect.width, rect.height);
-            if (my >= presetRect.y && my <= presetRect.y + presetRect.h) {
-                for (let i = 0; i < this.presetButtons.length; i++) {
-                    const bx = presetRect.startX + i * (presetRect.w + presetRect.gap);
-                    if (mx >= bx && mx <= bx + presetRect.w) {
-                        this.activePresetIdx = i;
-                        const map = ['square', 'sawtooth', 'triangle', 'pulse', 'custom'];
-                        this.loadPreset(map[i]);
-                        e.stopPropagation(); e.preventDefault();
-                        return;
-                    }
-                }
-            }
-
-            const sp = this.getSpectrumRect(rect.width, rect.height);
-            if (mx >= sp.x && mx <= sp.x + sp.w && my >= sp.y && my <= sp.y + sp.h) {
-                this.mouseDown = true;
-                this.handleSpectrumDrag(mx, my, rect.width, rect.height);
-            }
-        });
-        canvas.addEventListener('mousemove', (e) => {
-            if (!this.mouseDown) return;
-            const rect = canvas.getBoundingClientRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
-            this.handleSpectrumDrag(mx, my, rect.width, rect.height);
-        });
-        canvas.addEventListener('mouseup', () => {
-            this.mouseDown = false;
-            this.activeBar = -1;
-        });
+    getSpectrumRect(w, h) {
+        return { x: w * 0.34, y: h - 130, w: w * 0.32, h: 56 };
     }
 
     handleSpectrumDrag(mx, my, w, h) {
@@ -66,17 +36,7 @@ export class FourierMode {
         const ratio = 1 - (my - sp.y) / sp.h;
         this.amps[idx] = Math.max(-1, Math.min(1, ratio * 2 - 1));
         this.activeBar = idx;
-        this.activePresetIdx = 4; // mark Custom
-    }
-
-    getPresetRect(w, h) {
-        const btnW = 86, btnH = 26, gap = 6;
-        const totalW = this.presetButtons.length * btnW + (this.presetButtons.length - 1) * gap;
-        return { w: btnW, h: btnH, gap, startX: (w - totalW) / 2, y: h - 130 };
-    }
-
-    getSpectrumRect(w, h) {
-        return { x: w * 0.36, y: h - 100, w: w * 0.32, h: 60 };
+        this.activePresetIdx = 4;
     }
 
     loadPreset(name) {
@@ -98,7 +58,6 @@ export class FourierMode {
                 this.amps[idx] = 0.5 / n;
             }
         }
-        // Normalize ≤ 1
         const m = Math.max(...this.amps.map(Math.abs));
         if (m > 1) this.amps = this.amps.map(a => a / m);
         this.trace = [];
@@ -108,23 +67,48 @@ export class FourierMode {
         this.time = 0;
         this.trace = [];
         this.activePresetIdx = 0;
+        this.mouseDown = false;
+        this.activeBar = -1;
         this.loadPreset('square');
     }
 
+    onPointerDown(mx, my, vw, vh) {
+        const pr = this.getPresetRect(vw, vh);
+        if (my >= pr.y && my <= pr.y + pr.h) {
+            for (let i = 0; i < this.presetButtons.length; i++) {
+                const bx = pr.startX + i * (pr.w + pr.gap);
+                if (mx >= bx && mx <= bx + pr.w) {
+                    this.activePresetIdx = i;
+                    const map = ['square', 'sawtooth', 'triangle', 'pulse', 'custom'];
+                    this.loadPreset(map[i]);
+                    return;
+                }
+            }
+        }
+
+        const sp = this.getSpectrumRect(vw, vh);
+        if (mx >= sp.x && mx <= sp.x + sp.w && my >= sp.y && my <= sp.y + sp.h) {
+            this.mouseDown = true;
+            this.handleSpectrumDrag(mx, my, vw, vh);
+        }
+    }
+
+    onPointerMove(mx, my, vw, vh) {
+        if (this.mouseDown) this.handleSpectrumDrag(mx, my, vw, vh);
+    }
+
+    onPointerUp() { this.mouseDown = false; this.activeBar = -1; }
+
     update(_results, { leftPinch, rightPinch }) {
-        // Right pinch sets time scale via thumb-index distance
         if (rightPinch && rightPinch.isPinching) {
             this.timeScale = 0.4 + Math.min(1.6, Math.max(0, (rightPinch.distance - 0.03) * 30));
         }
         this.time += 0.016 * this.timeScale;
 
-        // Left pinch acts on spectrum bars
         if (leftPinch && leftPinch.isPinching) {
-            const w = this._lastW || window.innerWidth;
-            const h = this._lastH || window.innerHeight;
+            const w = this._lastW, h = this._lastH;
             const sp = this.getSpectrumRect(w, h);
-            const px = leftPinch.x * w;
-            const py = leftPinch.y * h;
+            const px = leftPinch.x * w, py = leftPinch.y * h;
             if (px >= sp.x && px <= sp.x + sp.w && py >= sp.y - 40 && py <= sp.y + sp.h + 40) {
                 this.handleSpectrumDrag(px, Math.max(sp.y, Math.min(sp.y + sp.h, py)), w, h);
             }
@@ -143,19 +127,15 @@ export class FourierMode {
         this._lastW = w; this._lastH = h;
         this.drawGrid(ctx, w, h);
 
-        // Layout: epicycle on the left half, waveform on right half
         const epiX = w * 0.20;
-        const epiY = h * 0.42;
+        const epiY = h * 0.40;
         const waveX = w * 0.45;
-        const waveY = h * 0.42;
+        const waveY = h * 0.40;
         const waveW = w * 0.5;
         const waveH = h * 0.46;
-        const epiR = Math.min(w, h) * 0.16;
+        const epiR = Math.min(w, h) * 0.15;
 
-        // ===== Epicycle =====
         let cx = epiX, cy = epiY;
-        const points = [];
-        points.push({ x: cx, y: cy });
         for (let n = 1; n <= this.N; n++) {
             const r = this.amps[n - 1] * epiR;
             ctx.strokeStyle = 'rgba(125, 211, 252, 0.18)';
@@ -171,27 +151,22 @@ export class FourierMode {
             ctx.moveTo(cx, cy); ctx.lineTo(nx, ny);
             ctx.stroke();
             cx = nx; cy = ny;
-            points.push({ x: cx, y: cy });
         }
-        // Tip dot
         ctx.fillStyle = '#fbbf24';
         ctx.beginPath();
         ctx.arc(cx, cy, 5, 0, Math.PI * 2);
         ctx.fill();
 
-        // ===== Waveform =====
         ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(waveX, waveY); ctx.lineTo(waveX + waveW, waveY);
         ctx.stroke();
 
-        // Push current sum (sin component) into trace
         const value = this.sampleSeries(this.time);
         this.trace.push(value);
         if (this.trace.length > this.traceMax) this.trace.shift();
 
-        // Draw trace
         ctx.strokeStyle = '#7dd3fc';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -202,7 +177,6 @@ export class FourierMode {
         }
         ctx.stroke();
 
-        // Connector from epicycle tip to wave start
         ctx.strokeStyle = 'rgba(251, 191, 36, 0.35)';
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
@@ -216,10 +190,9 @@ export class FourierMode {
         ctx.arc(waveX, waveY - value * (waveH * 0.4), 4, 0, Math.PI * 2);
         ctx.fill();
 
-        // Spectrum bars (interactive)
         this.drawSpectrum(ctx, w, h);
         this.drawPresets(ctx, w, h);
-        this.drawInfoPanel(ctx, w, h, value);
+        this.drawInfoPanel(ctx, w, value);
     }
 
     drawSpectrum(ctx, w, h) {
@@ -264,8 +237,8 @@ export class FourierMode {
         this.presetButtons.forEach((p, i) => {
             const x = r.startX + i * (r.w + r.gap);
             const active = i === this.activePresetIdx;
-            ctx.fillStyle = active ? 'rgba(125, 211, 252, 0.16)' : 'rgba(255,255,255,0.04)';
-            ctx.strokeStyle = active ? 'rgba(125, 211, 252, 0.5)' : 'rgba(255,255,255,0.10)';
+            ctx.fillStyle = active ? 'rgba(125, 211, 252, 0.16)' : 'rgba(255, 255, 255, 0.04)';
+            ctx.strokeStyle = active ? 'rgba(125, 211, 252, 0.5)' : 'rgba(255, 255, 255, 0.10)';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.roundRect(x, r.y, r.w, r.h, 6);
@@ -278,9 +251,9 @@ export class FourierMode {
         });
     }
 
-    drawInfoPanel(ctx, w, _h, value) {
+    drawInfoPanel(ctx, w, value) {
         const panelW = 260, panelH = 200;
-        const x = w - panelW - 20, y = 76;
+        const x = w - panelW - 16, y = 16;
         ctx.fillStyle = 'rgba(13, 19, 33, 0.92)';
         ctx.beginPath();
         ctx.roundRect(x, y, panelW, panelH, 12);
@@ -320,12 +293,8 @@ export class FourierMode {
         ctx.strokeStyle = 'rgba(148, 163, 184, 0.035)';
         ctx.lineWidth = 1;
         const step = Math.min(w, h) / 22;
-        for (let x = 0; x < w; x += step) {
-            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-        }
-        for (let y = 0; y < h; y += step) {
-            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-        }
+        for (let x = 0; x < w; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+        for (let y = 0; y < h; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
     }
 
     getControlsHTML() {

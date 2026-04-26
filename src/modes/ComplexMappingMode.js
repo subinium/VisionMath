@@ -3,107 +3,48 @@ export class ComplexMappingMode {
 
     constructor() {
         this.functions = [
-            { id: 'z2',     label: 'z²',         fn: (re, im) => [re*re - im*im, 2*re*im] },
-            { id: 'z3',     label: 'z³',         fn: (re, im) => {
-                const r2 = re*re - im*im, i2 = 2*re*im;
-                return [r2*re - i2*im, r2*im + i2*re];
+            { id: 'z2',     label: 'z²',          fn: (re, im) => [re * re - im * im, 2 * re * im] },
+            { id: 'z3',     label: 'z³',          fn: (re, im) => {
+                const r2 = re * re - im * im, i2 = 2 * re * im;
+                return [r2 * re - i2 * im, r2 * im + i2 * re];
             }},
-            { id: '1/z',    label: '1/z',        fn: (re, im) => {
-                const d = re*re + im*im;
-                return d === 0 ? [0, 0] : [re/d, -im/d];
+            { id: '1/z',    label: '1/z',         fn: (re, im) => {
+                const d = re * re + im * im;
+                return d === 0 ? [0, 0] : [re / d, -im / d];
             }},
-            { id: 'sin',    label: 'sin(z)',     fn: (re, im) => [Math.sin(re)*Math.cosh(im), Math.cos(re)*Math.sinh(im)] },
-            { id: 'exp',    label: 'eᶻ',         fn: (re, im) => [Math.exp(re)*Math.cos(im), Math.exp(re)*Math.sin(im)] },
+            { id: 'sin',    label: 'sin(z)',      fn: (re, im) => [Math.sin(re) * Math.cosh(im), Math.cos(re) * Math.sinh(im)] },
+            { id: 'exp',    label: 'eᶻ',          fn: (re, im) => [Math.exp(re) * Math.cos(im), Math.exp(re) * Math.sin(im)] },
             { id: 'mobius', label: '(z−1)/(z+1)', fn: (re, im) => {
-                // (z-1)/(z+1)
                 const ar = re - 1, ai = im;
                 const br = re + 1, bi = im;
-                const d = br*br + bi*bi;
+                const d = br * br + bi * bi;
                 if (d === 0) return [0, 0];
-                return [(ar*br + ai*bi) / d, (ai*br - ar*bi) / d];
+                return [(ar * br + ai * bi) / d, (ai * br - ar * bi) / d];
             }},
         ];
         this.activeFn = 0;
-
-        this.zoom = 2.5;       // half-width of plotting region in z-plane
-        this.point = { re: 0.7, im: 0.5 }; // draggable z point
+        this.zoom = 2.5;
+        this.point = { re: 0.7, im: 0.5 };
         this.dragging = false;
         this.mouseDown = false;
-
-        // Off-screen image cache for the w-plane domain coloring
-        this.cache = { canvas: null, ctx: null, key: null, w: 0, h: 0 };
+        this.cache = { canvas: null, ctx: null, key: null };
         this.dirty = true;
-
-        this.setupMouse();
-    }
-
-    setupMouse() {
-        const canvas = document.getElementById('overlay-canvas');
-        canvas.addEventListener('mousedown', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
-
-            const fb = this.getFnButtonsRect(rect.width, rect.height);
-            if (my >= fb.y && my <= fb.y + fb.h) {
-                for (let i = 0; i < this.functions.length; i++) {
-                    const bx = fb.startX + i * (fb.w + fb.gap);
-                    if (mx >= bx && mx <= bx + fb.w) {
-                        if (this.activeFn !== i) { this.activeFn = i; this.dirty = true; }
-                        e.stopPropagation(); e.preventDefault();
-                        return;
-                    }
-                }
-            }
-
-            this.mouseDown = true;
-            const left = this.getZPaneRect(rect.width, rect.height);
-            if (mx >= left.x && mx <= left.x + left.w && my >= left.y && my <= left.y + left.h) {
-                this.dragging = true;
-                this.setPointFromScreen(mx, my, left);
-            }
-        });
-        canvas.addEventListener('mousemove', (e) => {
-            if (!this.mouseDown || !this.dragging) return;
-            const rect = canvas.getBoundingClientRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
-            const left = this.getZPaneRect(rect.width, rect.height);
-            this.setPointFromScreen(mx, my, left);
-        });
-        canvas.addEventListener('mouseup', () => {
-            this.mouseDown = false;
-            this.dragging = false;
-        });
-
-        canvas.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            this.zoom *= (1 + e.deltaY * 0.001);
-            this.zoom = Math.max(0.5, Math.min(8, this.zoom));
-            this.dirty = true;
-        }, { passive: false });
-    }
-
-    setPointFromScreen(mx, my, rectPane) {
-        const u = (mx - rectPane.x - rectPane.w / 2) / (rectPane.w / 2); // -1..1
-        const v = (my - rectPane.y - rectPane.h / 2) / (rectPane.h / 2);
-        this.point.re = u * this.zoom;
-        this.point.im = -v * this.zoom;
+        this._lastW = 1; this._lastH = 1;
     }
 
     getFnButtonsRect(w, h) {
         const btnW = 70, btnH = 26, gap = 6;
         const totalW = this.functions.length * btnW + (this.functions.length - 1) * gap;
-        return { w: btnW, h: btnH, gap, startX: (w - totalW) / 2, y: h - 130 };
+        return { w: btnW, h: btnH, gap, startX: (w - totalW) / 2, y: h - 56 };
     }
 
     getZPaneRect(w, h) {
-        const padX = 30, padTop = 80, padBot = 160, gap = 24;
-        const paneW = (w - padX * 2 - gap) / 2 - 50;
+        const padTop = 16, padBot = 100, gap = 24;
         const paneH = h - padTop - padBot;
-        const side = Math.min(paneW, paneH);
+        const sideMax = (w - gap - 40) / 2;
+        const side = Math.max(80, Math.min(sideMax, paneH));
         const totalW = side * 2 + gap;
-        const x = (w - totalW) / 2 - 100;
+        const x = (w - totalW) / 2;
         const y = padTop + (paneH - side) / 2;
         return { x, y, w: side, h: side };
     }
@@ -113,46 +54,78 @@ export class ComplexMappingMode {
         return { x: left.x + left.w + 24, y: left.y, w: left.w, h: left.h };
     }
 
+    setPointFromScreen(mx, my, rectPane) {
+        const u = (mx - rectPane.x - rectPane.w / 2) / (rectPane.w / 2);
+        const v = (my - rectPane.y - rectPane.h / 2) / (rectPane.h / 2);
+        this.point.re = u * this.zoom;
+        this.point.im = -v * this.zoom;
+    }
+
     reset() {
         this.zoom = 2.5;
         this.point = { re: 0.7, im: 0.5 };
         this.dragging = false;
+        this.mouseDown = false;
+        this.dirty = true;
+    }
+
+    onPointerDown(mx, my, vw, vh) {
+        const fb = this.getFnButtonsRect(vw, vh);
+        if (my >= fb.y && my <= fb.y + fb.h) {
+            for (let i = 0; i < this.functions.length; i++) {
+                const bx = fb.startX + i * (fb.w + fb.gap);
+                if (mx >= bx && mx <= bx + fb.w) {
+                    if (this.activeFn !== i) { this.activeFn = i; this.dirty = true; }
+                    return;
+                }
+            }
+        }
+        this.mouseDown = true;
+        const left = this.getZPaneRect(vw, vh);
+        if (mx >= left.x && mx <= left.x + left.w && my >= left.y && my <= left.y + left.h) {
+            this.dragging = true;
+            this.setPointFromScreen(mx, my, left);
+        }
+    }
+
+    onPointerMove(mx, my, vw, vh) {
+        if (!this.mouseDown || !this.dragging) return;
+        const left = this.getZPaneRect(vw, vh);
+        this.setPointFromScreen(mx, my, left);
+    }
+
+    onPointerUp() { this.mouseDown = false; this.dragging = false; }
+
+    onWheel(deltaY) {
+        this.zoom *= (1 + deltaY * 0.001);
+        this.zoom = Math.max(0.5, Math.min(8, this.zoom));
         this.dirty = true;
     }
 
     update(_results, { leftPinch, rightPinch }) {
-        const w = this._lastW || window.innerWidth;
-        const h = this._lastH || window.innerHeight;
-        const left = this.getZPaneRect(w, h);
-
-        // Right pinch: zoom (use distance)
         if (rightPinch && rightPinch.isPinching) {
             const target = 1.0 + (0.18 - Math.min(0.18, rightPinch.distance)) * 25;
             this.zoom = Math.max(0.6, Math.min(6, target));
             this.dirty = true;
         }
-
-        // Left pinch: drag point on z-plane
         if (leftPinch && leftPinch.isPinching) {
-            const px = leftPinch.x * w;
-            const py = leftPinch.y * h;
+            const left = this.getZPaneRect(this._lastW, this._lastH);
+            const px = leftPinch.x * this._lastW;
+            const py = leftPinch.y * this._lastH;
             if (px >= left.x && px <= left.x + left.w && py >= left.y && py <= left.y + left.h) {
                 this.setPointFromScreen(px, py, left);
             }
         }
     }
 
-    // Domain coloring color: hue from arg, lightness from |w| log-modulated
     domainColor(re, im) {
-        const r = Math.hypot(re, im);
+        const r = Math.sqrt(re * re + im * im);
         const arg = Math.atan2(im, re);
-        const hue = ((arg + Math.PI) / (2 * Math.PI)) * 360;
-        // Cyclic lightness gradient on log scale → bands at |w| = 2^n
+        const hue = ((arg + Math.PI) / (2 * Math.PI));
         const lvl = Math.log2(Math.max(1e-6, r));
         const frac = lvl - Math.floor(lvl);
-        const sat = 70;
-        const light = 30 + frac * 35;
-        return [hue, sat, light];
+        const light = 0.30 + frac * 0.35;
+        return [hue, 0.7, light];
     }
 
     renderCacheIfNeeded(w, h) {
@@ -162,7 +135,6 @@ export class ComplexMappingMode {
         const key = `${this.activeFn}|${this.zoom.toFixed(3)}|${W}x${H}`;
         if (!this.dirty && this.cache.key === key && this.cache.canvas) return;
 
-        // Render at half resolution then upscale for performance
         const renderScale = 0.5;
         const RW = Math.max(64, Math.floor(W * renderScale));
         const RH = Math.max(64, Math.floor(H * renderScale));
@@ -175,23 +147,24 @@ export class ComplexMappingMode {
         this.cache.canvas.height = RH;
 
         const img = this.cache.ctx.createImageData(RW, RH);
+        const buf = new Uint32Array(img.data.buffer);
         const fn = this.functions[this.activeFn].fn;
+        const z = this.zoom;
+        let p = 0;
         for (let py = 0; py < RH; py++) {
             const v = (py / RH) * 2 - 1;
-            const im = -v * this.zoom;
+            const im = -v * z;
             for (let px = 0; px < RW; px++) {
                 const u = (px / RW) * 2 - 1;
-                const re = u * this.zoom;
+                const re = u * z;
                 const [wre, wim] = fn(re, im);
-                const [h2, s, l] = this.domainColor(wre, wim);
-                const [r, g, b] = hslToRgb(h2 / 360, s / 100, l / 100);
-                const idx = (py * RW + px) * 4;
-                img.data[idx] = r; img.data[idx + 1] = g; img.data[idx + 2] = b; img.data[idx + 3] = 255;
+                const [hh, ss, ll] = this.domainColor(wre, wim);
+                const [r, g, b] = hslToRgb(hh, ss, ll);
+                buf[p++] = (255 << 24) | (b << 16) | (g << 8) | r;
             }
         }
         this.cache.ctx.putImageData(img, 0, 0);
         this.cache.key = key;
-        this.cache.w = W; this.cache.h = H;
         this.dirty = false;
     }
 
@@ -201,19 +174,15 @@ export class ComplexMappingMode {
 
         const left = this.getZPaneRect(w, h);
         const right = this.getWPaneRect(w, h);
-
-        // Render cache (w-plane domain coloring)
         this.renderCacheIfNeeded(w, h);
 
-        // ===== Z-plane (left, schematic) =====
+        // z-plane (schematic)
         this.drawPaneFrame(ctx, left, 'z-plane');
-
-        // Light reference grid in z-plane
         ctx.strokeStyle = 'rgba(148, 163, 184, 0.16)';
         ctx.lineWidth = 1;
         const steps = 4;
         for (let k = -steps; k <= steps; k++) {
-            const u = (k / steps) * 0.5 + 0.5; // 0..1
+            const u = (k / steps) * 0.5 + 0.5;
             const xx = left.x + u * left.w;
             const yy = left.y + u * left.h;
             ctx.beginPath();
@@ -221,17 +190,15 @@ export class ComplexMappingMode {
             ctx.moveTo(left.x, yy); ctx.lineTo(left.x + left.w, yy);
             ctx.stroke();
         }
-        // axes
         ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
         ctx.beginPath();
         ctx.moveTo(left.x, left.y + left.h / 2); ctx.lineTo(left.x + left.w, left.y + left.h / 2);
         ctx.moveTo(left.x + left.w / 2, left.y); ctx.lineTo(left.x + left.w / 2, left.y + left.h);
         ctx.stroke();
 
-        // Concentric circles + radial lines (preimage hint)
-        ctx.strokeStyle = 'rgba(125, 211, 252, 0.22)';
         const cxL = left.x + left.w / 2, cyL = left.y + left.h / 2;
         const half = left.w / 2;
+        ctx.strokeStyle = 'rgba(125, 211, 252, 0.22)';
         for (let r = 1; r <= 4; r++) {
             const radius = (r / this.zoom) * half;
             if (radius > half) break;
@@ -247,7 +214,6 @@ export class ComplexMappingMode {
             ctx.stroke();
         }
 
-        // Z point
         const zU = this.point.re / this.zoom;
         const zV = -this.point.im / this.zoom;
         const zx = cxL + zU * half;
@@ -257,20 +223,18 @@ export class ComplexMappingMode {
         ctx.arc(zx, zy, this.dragging ? 8 : 5, 0, Math.PI * 2);
         ctx.fill();
 
-        // ===== W-plane (right, domain colored) =====
+        // w-plane (domain colored)
         this.drawPaneFrame(ctx, right, 'w-plane = f(z)');
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(this.cache.canvas, right.x, right.y, right.w, right.h);
 
-        // axes overlay
-        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(right.x, right.y + right.h / 2); ctx.lineTo(right.x + right.w, right.y + right.h / 2);
         ctx.moveTo(right.x + right.w / 2, right.y); ctx.lineTo(right.x + right.w / 2, right.y + right.h);
         ctx.stroke();
 
-        // f(z) point
         const fn = this.functions[this.activeFn].fn;
         const [wre, wim] = fn(this.point.re, this.point.im);
         const wU = wre / this.zoom;
@@ -286,7 +250,7 @@ export class ComplexMappingMode {
         ctx.stroke();
 
         this.drawFnButtons(ctx, w, h);
-        this.drawInfoPanel(ctx, w, h, wre, wim);
+        this.drawInfoPanel(ctx, w, wre, wim);
     }
 
     drawPaneFrame(ctx, r, title) {
@@ -307,8 +271,8 @@ export class ComplexMappingMode {
         this.functions.forEach((f, i) => {
             const x = r.startX + i * (r.w + r.gap);
             const active = i === this.activeFn;
-            ctx.fillStyle = active ? 'rgba(125, 211, 252, 0.16)' : 'rgba(255,255,255,0.04)';
-            ctx.strokeStyle = active ? 'rgba(125, 211, 252, 0.5)' : 'rgba(255,255,255,0.10)';
+            ctx.fillStyle = active ? 'rgba(125, 211, 252, 0.16)' : 'rgba(255, 255, 255, 0.04)';
+            ctx.strokeStyle = active ? 'rgba(125, 211, 252, 0.5)' : 'rgba(255, 255, 255, 0.10)';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.roundRect(x, r.y, r.w, r.h, 6);
@@ -320,12 +284,13 @@ export class ComplexMappingMode {
         });
     }
 
-    drawInfoPanel(ctx, w, _h, wre, wim) {
+    drawInfoPanel(ctx, w, wre, wim) {
         const panelW = 260, panelH = 200;
-        const x = w - panelW - 20, y = 76;
+        const x = w - panelW - 16;
+        const yAnchor = 16;
         ctx.fillStyle = 'rgba(13, 19, 33, 0.92)';
         ctx.beginPath();
-        ctx.roundRect(x, y, panelW, panelH, 12);
+        ctx.roundRect(x, yAnchor, panelW, panelH, 12);
         ctx.fill();
         ctx.strokeStyle = 'rgba(148, 163, 184, 0.18)';
         ctx.lineWidth = 1;
@@ -334,49 +299,45 @@ export class ComplexMappingMode {
         ctx.fillStyle = '#7dd3fc';
         ctx.font = '700 11px Inter';
         ctx.textAlign = 'left';
-        ctx.fillText('COMPLEX MAPPING', x + 18, y + 24);
+        ctx.fillText('COMPLEX MAPPING', x + 18, yAnchor + 24);
 
         ctx.fillStyle = '#94a3b8';
         ctx.font = '600 10px Inter';
-        ctx.fillText('FUNCTION', x + 18, y + 46);
+        ctx.fillText('FUNCTION', x + 18, yAnchor + 46);
 
         ctx.fillStyle = '#fff';
         ctx.font = '600 18px "JetBrains Mono", monospace';
-        ctx.fillText(`f(z) = ${this.functions[this.activeFn].label}`, x + 18, y + 70);
+        ctx.fillText(`f(z) = ${this.functions[this.activeFn].label}`, x + 18, yAnchor + 70);
 
         ctx.fillStyle = '#94a3b8';
         ctx.font = '600 10px Inter';
-        ctx.fillText('INPUT  z', x + 18, y + 96);
+        ctx.fillText('INPUT  z', x + 18, yAnchor + 96);
         ctx.fillStyle = '#fbbf24';
         ctx.font = '500 12px "JetBrains Mono", monospace';
-        ctx.fillText(`${this.point.re.toFixed(2)} + ${this.point.im.toFixed(2)}i`, x + 18, y + 116);
+        ctx.fillText(`${this.point.re.toFixed(2)} + ${this.point.im.toFixed(2)}i`, x + 18, yAnchor + 116);
 
         ctx.fillStyle = '#94a3b8';
         ctx.font = '600 10px Inter';
-        ctx.fillText('OUTPUT  f(z)', x + 18, y + 138);
+        ctx.fillText('OUTPUT  f(z)', x + 18, yAnchor + 138);
         ctx.fillStyle = '#fff';
         ctx.font = '500 12px "JetBrains Mono", monospace';
-        ctx.fillText(`${wre.toFixed(2)} + ${wim.toFixed(2)}i`, x + 18, y + 158);
+        ctx.fillText(`${wre.toFixed(2)} + ${wim.toFixed(2)}i`, x + 18, yAnchor + 158);
 
         ctx.fillStyle = '#94a3b8';
         ctx.font = '500 10px Inter';
-        ctx.fillText(`|f(z)| = ${Math.hypot(wre, wim).toFixed(2)}   arg = ${(Math.atan2(wim, wre) * 180 / Math.PI).toFixed(1)}°`, x + 18, y + 180);
+        ctx.fillText(`|f(z)| = ${Math.sqrt(wre * wre + wim * wim).toFixed(2)}   arg = ${(Math.atan2(wim, wre) * 180 / Math.PI).toFixed(1)}°`, x + 18, yAnchor + 180);
 
         ctx.fillStyle = '#94a3b8';
         ctx.font = '400 10px Inter';
-        ctx.fillText(`zoom × ${this.zoom.toFixed(2)}`, x + 18, y + 196);
+        ctx.fillText(`zoom × ${this.zoom.toFixed(2)}`, x + 18, yAnchor + 196);
     }
 
     drawGrid(ctx, w, h) {
         ctx.strokeStyle = 'rgba(148, 163, 184, 0.03)';
         ctx.lineWidth = 1;
         const step = Math.min(w, h) / 22;
-        for (let x = 0; x < w; x += step) {
-            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-        }
-        for (let y = 0; y < h; y += step) {
-            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-        }
+        for (let x = 0; x < w; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+        for (let y = 0; y < h; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
     }
 
     getControlsHTML() {
