@@ -1,7 +1,12 @@
 import { TriangleCentersMode } from './TriangleCentersMode';
 import { PlatonicSolidsMode } from './PlatonicSolidsMode';
+import { LinearTransformMode } from './LinearTransformMode';
+import { FourierMode } from './FourierMode';
+import { ComplexMappingMode } from './ComplexMappingMode';
 import { VectorAdditionMode } from './VectorAdditionMode';
 import { PendulumMode } from './PendulumMode';
+import { LorenzMode } from './LorenzMode';
+import { MandelbrotMode } from './MandelbrotMode';
 import { Renderer } from '../renderer';
 
 export class ModeManager {
@@ -12,19 +17,21 @@ export class ModeManager {
         this.currentMode = null;
         this.currentModeIndex = -1;
         this.modes = [];
-        this.pinchState = { left: false, right: false };
-        this.lastPinchTime = 0;
-        this.pinchCooldown = 500;
 
-        // Auto-register modes
-        this.registerMode(new TriangleCentersMode());
-        this.registerMode(new PlatonicSolidsMode());
-        this.registerMode(new VectorAdditionMode());
-        this.registerMode(new PendulumMode());
-    }
+        const register = (mode, category) => {
+            mode.category = category;
+            this.modes.push(mode);
+        };
 
-    registerMode(mode) {
-        this.modes.push(mode);
+        register(new TriangleCentersMode(),  'GEOMETRY');
+        register(new PlatonicSolidsMode(),   'GEOMETRY');
+        register(new LinearTransformMode(),  'ALGEBRA');
+        register(new FourierMode(),          'ANALYSIS');
+        register(new ComplexMappingMode(),   'ANALYSIS');
+        register(new VectorAdditionMode(),   'PHYSICS');
+        register(new PendulumMode(),         'PHYSICS');
+        register(new LorenzMode(),           'PHYSICS');
+        register(new MandelbrotMode(),       'FRACTALS');
     }
 
     getModes() {
@@ -44,7 +51,8 @@ export class ModeManager {
         return {
             isPinching: dist < 0.08,
             x: 1 - midX,
-            y: midY
+            y: midY,
+            distance: dist
         };
     }
 
@@ -78,7 +86,6 @@ export class ModeManager {
             this.currentMode.draw(this.ctx, w, h);
         }
 
-        // Draw skeleton on top
         if (this.lastResults && this.lastResults.hands && this.lastResults.hands.landmarks) {
             this.lastResults.hands.landmarks.forEach(hand => {
                 this.renderer.drawSkeleton(this.ctx, w, h, hand, this.renderer.handConnections);
@@ -89,9 +96,15 @@ export class ModeManager {
 
     selectMode(index) {
         if (this.modes[index]) {
+            if (this.currentMode && typeof this.currentMode.deactivate === 'function') {
+                this.currentMode.deactivate();
+            }
             this.currentMode = this.modes[index];
             this.currentModeIndex = index;
             this.currentMode.reset();
+            if (typeof this.currentMode.activate === 'function') {
+                this.currentMode.activate();
+            }
         }
     }
 }

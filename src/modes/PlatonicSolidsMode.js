@@ -2,9 +2,8 @@ export class PlatonicSolidsMode {
     name = 'Platonic Solids';
 
     constructor() {
-        // Platonic solids only
         this.solids = ['tetrahedron', 'cube', 'octahedron', 'dodecahedron', 'icosahedron'];
-        this.currentSolid = 1; // Start with cube
+        this.currentSolid = 1;
         this.rotation = { x: 0.5, y: 0.5, z: 0 };
         this.rotationSpeed = 0.01;
         this.autoRotate = true;
@@ -14,6 +13,8 @@ export class PlatonicSolidsMode {
         this.edges = [];
         this.faces = [];
         this.faceColors = [];
+        this.showVertexLabels = false;
+        this.wireframeOnly = false;
         this.reset();
         this.setupMouse();
     }
@@ -28,32 +29,31 @@ export class PlatonicSolidsMode {
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
 
-            // Selector area (bottom center)
-            const btnW = 40;
-            const btnH = 40;
-            const gap = 10;
-            const totalW = this.solids.length * btnW + (this.solids.length - 1) * gap;
-            const startX = (rect.width - totalW) / 2;
-            const startY = rect.height - 80;
-
-            console.log('=== PLATONIC SOLIDS CLICK ===');
-            console.log('Mouse:', mx.toFixed(1), my.toFixed(1));
-
-            // Check if in button area
-            if (my >= startY && my <= startY + btnH) {
-                console.log('✓ Y coordinate is in button area!');
-
+            // Solid selector
+            const sel = this.getSelectorRect(rect.width, rect.height);
+            if (my >= sel.startY && my <= sel.startY + sel.btnH) {
                 for (let i = 0; i < this.solids.length; i++) {
-                    const bx = startX + i * (btnW + gap);
-
-                    if (mx >= bx && mx <= bx + btnW) {
-                        console.log(`✓✓✓ SOLID ${i} CLICKED: ${this.solids[i]}`);
+                    const bx = sel.startX + i * (sel.btnW + sel.gap);
+                    if (mx >= bx && mx <= bx + sel.btnW) {
                         this.currentSolid = i;
                         this.loadSolid(this.solids[i]);
                         e.stopPropagation();
                         e.preventDefault();
                         return;
                     }
+                }
+            }
+
+            // Toggle buttons
+            const tog = this.getToggleRect(rect.width, rect.height);
+            for (let i = 0; i < tog.buttons.length; i++) {
+                const b = tog.buttons[i];
+                if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+                    if (b.action === 'wireframe') this.wireframeOnly = !this.wireframeOnly;
+                    if (b.action === 'labels') this.showVertexLabels = !this.showVertexLabels;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    return;
                 }
             }
 
@@ -80,7 +80,35 @@ export class PlatonicSolidsMode {
             e.preventDefault();
             this.targetScale -= e.deltaY * 0.001;
             this.targetScale = Math.max(0.5, Math.min(2, this.targetScale));
-        });
+        }, { passive: false });
+    }
+
+    getSelectorRect(w, h) {
+        const btnW = 40, btnH = 40, gap = 10;
+        const totalW = this.solids.length * btnW + (this.solids.length - 1) * gap;
+        return {
+            btnW, btnH, gap,
+            startX: (w - totalW) / 2,
+            startY: h - 76
+        };
+    }
+
+    getToggleRect(w, h) {
+        const btnW = 96, btnH = 28, gap = 8;
+        const buttons = [
+            { action: 'wireframe', label: this.wireframeOnly ? 'Faces' : 'Wireframe' },
+            { action: 'labels', label: this.showVertexLabels ? 'Hide #' : 'Show #' }
+        ];
+        const totalW = buttons.length * btnW + (buttons.length - 1) * gap;
+        const startX = (w - totalW) / 2;
+        const y = h - 124;
+        return {
+            buttons: buttons.map((b, i) => ({
+                ...b,
+                x: startX + i * (btnW + gap),
+                y, w: btnW, h: btnH
+            }))
+        };
     }
 
     reset() {
@@ -139,7 +167,7 @@ export class PlatonicSolidsMode {
                 this.faceColors = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e', '#14b8a6', '#3b82f6', '#a855f7'];
                 break;
 
-            case 'dodecahedron':
+            case 'dodecahedron': {
                 const a = 1 / phi;
                 const b = phi;
                 this.vertices = [
@@ -162,8 +190,9 @@ export class PlatonicSolidsMode {
                     [2, 13, 3, 17, 16], [3, 13, 15, 7, 11], [4, 14, 5, 19, 18],
                     [4, 18, 6, 10, 8], [5, 9, 11, 7, 19], [6, 18, 19, 7, 15]
                 ];
-                this.faceColors = Array(12).fill(0).map((_, i) => `hsl(${i * 30}, 60%, 50%)`);
+                this.faceColors = Array(12).fill(0).map((_, i) => `hsl(${i * 30}, 55%, 55%)`);
                 break;
+            }
 
             case 'icosahedron':
                 this.vertices = [
@@ -188,127 +217,11 @@ export class PlatonicSolidsMode {
                     [6, 1, 11], [6, 11, 10], [10, 11, 7], [10, 7, 2], [2, 7, 5],
                     [3, 5, 7], [3, 7, 11], [3, 11, 1], [3, 1, 9], [3, 9, 5]
                 ];
-                this.faceColors = Array(20).fill(0).map((_, i) => `hsl(${i * 18}, 60%, 50%)`);
-                break;
-
-            case 'buckyball': // Truncated Icosahedron (Soccer Ball) - Simplified approximation
-                // Generating a truncated icosahedron is complex.
-                // We will use a simplified model or just the vertices of an Icosahedron scaled differently to represent it visually for now
-                // Actually, let's implement a Rhombic Dodecahedron instead, it's simpler and visually distinct
-                // Vertices of Rhombic Dodecahedron
-                this.vertices = [
-                    [1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1],
-                    [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1],
-                    [0, 0, 2], [0, 0, -2], [0, 2, 0], [0, -2, 0], [2, 0, 0], [-2, 0, 0]
-                ];
-                // This is actually a stellated octahedron or similar. Let's stick to valid geometry.
-                // Let's do a Rhombic Dodecahedron correctly:
-                // (±1, ±1, ±1) and (±2, 0, 0) permutations
-                this.vertices = [
-                    // Cube vertices
-                    [-1, -1, -1], [-1, -1, 1], [-1, 1, -1], [-1, 1, 1],
-                    [1, -1, -1], [1, -1, 1], [1, 1, -1], [1, 1, 1],
-                    // Octahedron vertices (scaled by 2)
-                    [-2, 0, 0], [2, 0, 0], [0, -2, 0], [0, 2, 0], [0, 0, -2], [0, 0, 2]
-                ];
-                // Faces are 12 rhombi.
-                // We'll auto-generate edges/faces via convex hull or manual definition is tedious.
-                // Let's switch to a simpler "Pyramid" (Square based) for variety
-                this.vertices = [
-                    [1, 0, 1], [1, 0, -1], [-1, 0, 1], [-1, 0, -1], // Base
-                    [0, 1.5, 0] // Apex
-                ];
-                this.edges = [
-                    [0, 1], [1, 3], [3, 2], [2, 0], // Base
-                    [0, 4], [1, 4], [2, 4], [3, 4]  // Sides
-                ];
-                this.faces = [
-                    [0, 1, 4], [1, 3, 4], [3, 2, 4], [2, 0, 4], // Sides
-                    [0, 2, 3, 1] // Base
-                ];
-                this.faceColors = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7'];
-                break;
-
-            // Archimedean Solids (Semi-regular)
-            case 'truncated_tetrahedron':
-                this.vertices = [
-                    [1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1],
-                    [1, 1, -1], [1, -1, 1], [-1, 1, 1], [-1, -1, -1]
-                ];
-                this.edges = [
-                    [0, 4], [0, 6], [1, 5], [1, 7], [2, 4], [2, 7], [3, 5], [3, 6],
-                    [0, 1], [2, 3], [4, 5], [6, 7]
-                ];
-                this.faces = [
-                    [0, 1, 5, 3, 6], [2, 3, 5, 1, 7], [0, 4, 2, 7, 1], [4, 5, 3, 6, 0],
-                    [0, 6, 2], [1, 7, 5], [2, 4, 3], [4, 6, 7]
-                ];
-                this.faceColors = Array(8).fill(0).map((_, i) => `hsl(${i * 45}, 65%, 55%)`);
-                break;
-
-            case 'cuboctahedron':
-                this.vertices = [
-                    [1, 1, 0], [1, -1, 0], [-1, 1, 0], [-1, -1, 0],
-                    [1, 0, 1], [1, 0, -1], [-1, 0, 1], [-1, 0, -1],
-                    [0, 1, 1], [0, 1, -1], [0, -1, 1], [0, -1, -1]
-                ];
-                this.edges = [
-                    [0, 4], [0, 5], [0, 8], [0, 9], [1, 4], [1, 5], [1, 10], [1, 11],
-                    [2, 6], [2, 7], [2, 8], [2, 9], [3, 6], [3, 7], [3, 10], [3, 11],
-                    [4, 8], [4, 10], [5, 9], [5, 11], [6, 8], [6, 10], [7, 9], [7, 11]
-                ];
-                this.faces = [
-                    [0, 4, 8], [0, 5, 9], [1, 4, 10], [1, 5, 11],
-                    [2, 6, 8], [2, 7, 9], [3, 6, 10], [3, 7, 11],
-                    [0, 8, 2, 9], [1, 10, 3, 11], [4, 0, 5, 1], [6, 2, 7, 3], [8, 4, 10, 6], [9, 5, 11, 7]
-                ];
-                this.faceColors = Array(14).fill(0).map((_, i) => `hsl(${i * 26}, 65%, 55%)`);
-                break;
-
-            case 'truncated_cube':
-                this.vertices = [
-                    [1, 1, 2], [1, 1, -2], [1, -1, 2], [1, -1, -2],
-                    [-1, 1, 2], [-1, 1, -2], [-1, -1, 2], [-1, -1, -2],
-                    [2, 1, 1], [2, 1, -1], [2, -1, 1], [2, -1, -1],
-                    [-2, 1, 1], [-2, 1, -1], [-2, -1, 1], [-2, -1, -1]
-                ];
-                this.edges = [
-                    [0, 2], [0, 4], [0, 8], [1, 3], [1, 5], [1, 9], [2, 6], [2, 10],
-                    [3, 7], [3, 11], [4, 6], [4, 12], [5, 7], [5, 13], [6, 14], [7, 15],
-                    [8, 9], [8, 10], [9, 11], [10, 11], [12, 13], [12, 14], [13, 15], [14, 15]
-                ];
-                this.faces = [
-                    [0, 2, 10, 8], [1, 9, 11, 3], [4, 12, 14, 6], [5, 7, 15, 13],
-                    [0, 4, 6, 2], [1, 3, 7, 5], [8, 10, 11, 9], [12, 13, 15, 14],
-                    [0, 8, 9, 1, 5, 13, 12, 4], [2, 6, 14, 15, 7, 3, 11, 10]
-                ];
-                this.faceColors = Array(10).fill(0).map((_, i) => `hsl(${i * 36}, 65%, 55%)`);
-                break;
-
-            case 'truncated_octahedron':
-                this.vertices = [
-                    [0, 1, 2], [0, 1, -2], [0, -1, 2], [0, -1, -2],
-                    [1, 2, 0], [1, -2, 0], [-1, 2, 0], [-1, -2, 0],
-                    [2, 0, 1], [2, 0, -1], [-2, 0, 1], [-2, 0, -1]
-                ];
-                this.edges = [
-                    [0, 4], [0, 6], [0, 8], [0, 10], [1, 4], [1, 6], [1, 9], [1, 11],
-                    [2, 5], [2, 7], [2, 8], [2, 10], [3, 5], [3, 7], [3, 9], [3, 11],
-                    [4, 8], [4, 9], [5, 8], [5, 9], [6, 10], [6, 11], [7, 10], [7, 11]
-                ];
-                this.faces = [
-                    [0, 4, 8], [0, 6, 10], [1, 4, 9], [1, 6, 11],
-                    [2, 5, 8], [2, 7, 10], [3, 5, 9], [3, 7, 11],
-                    [0, 8, 2, 10], [1, 9, 3, 11], [4, 0, 6, 1], [5, 2, 7, 3],
-                    [8, 4, 9, 5], [10, 6, 11, 7]
-                ];
-                this.faceColors = Array(14).fill(0).map((_, i) => `hsl(${i * 26}, 65%, 55%)`);
+                this.faceColors = Array(20).fill(0).map((_, i) => `hsl(${i * 18}, 55%, 55%)`);
                 break;
         }
 
-        const maxDist = Math.max(...this.vertices.map(v =>
-            Math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
-        ));
+        const maxDist = Math.max(...this.vertices.map(v => Math.hypot(v[0], v[1], v[2])));
         this.vertices = this.vertices.map(v => v.map(c => c / maxDist));
     }
 
@@ -316,11 +229,10 @@ export class PlatonicSolidsMode {
         if (!hand) return null;
         const thumb = hand[4];
         const index = hand[8];
-        return Math.sqrt((thumb.x - index.x) ** 2 + (thumb.y - index.y) ** 2);
+        return Math.hypot(thumb.x - index.x, thumb.y - index.y);
     }
 
-    update(results, { leftHand, rightHand, leftPinch, rightPinch }) {
-        // LEFT HAND: thumb-index distance = rotation speed
+    update(_results, { leftHand, rightHand }) {
         if (leftHand) {
             const dist = this.getPinchDistance(leftHand);
             if (dist !== null) {
@@ -329,7 +241,6 @@ export class PlatonicSolidsMode {
             }
         }
 
-        // RIGHT HAND: thumb-index distance = edge size (scale)
         if (rightHand) {
             const dist = this.getPinchDistance(rightHand);
             if (dist !== null) {
@@ -367,12 +278,62 @@ export class PlatonicSolidsMode {
     project(point, size, centerX, centerY) {
         const [x, y, z] = this.rotatePoint(point);
         const baseSize = size * 0.28;
-
+        // Slight perspective so far points shrink
+        const persp = 1 / (1 + z * 0.18);
         return {
-            x: centerX + x * baseSize,
-            y: centerY + y * baseSize,
+            x: centerX + x * baseSize * persp,
+            y: centerY + y * baseSize * persp,
             z: z
         };
+    }
+
+    faceNormal(face, projected) {
+        // Normal in screen-rotated space (after rotation, so lighting follows view)
+        const a = projected[face[0]];
+        const b = projected[face[1]];
+        const c = projected[face[2]];
+        const ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z;
+        const vx = c.x - a.x, vy = c.y - a.y, vz = c.z - a.z;
+        const nx = uy * vz - uz * vy;
+        const ny = uz * vx - ux * vz;
+        const nz = ux * vy - uy * vx;
+        const len = Math.hypot(nx, ny, nz) || 1;
+        return { x: nx / len, y: ny / len, z: nz / len };
+    }
+
+    // Computes properties for the current Platonic solid using the unit-edge formulas
+    computeProperties(type) {
+        // Edge length in our normalized coords
+        const e = (() => {
+            if (this.edges.length === 0) return 1;
+            const [i, j] = this.edges[0];
+            const a = this.vertices[i];
+            const b = this.vertices[j];
+            return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+        })();
+        const e2 = e * e;
+        const e3 = e2 * e;
+
+        switch (type) {
+            case 'tetrahedron':
+                return { area: Math.sqrt(3) * e2, volume: e3 / (6 * Math.sqrt(2)) };
+            case 'cube':
+                return { area: 6 * e2, volume: e3 };
+            case 'octahedron':
+                return { area: 2 * Math.sqrt(3) * e2, volume: (Math.sqrt(2) / 3) * e3 };
+            case 'dodecahedron':
+                return {
+                    area: 3 * Math.sqrt(25 + 10 * Math.sqrt(5)) * e2,
+                    volume: ((15 + 7 * Math.sqrt(5)) / 4) * e3
+                };
+            case 'icosahedron':
+                return {
+                    area: 5 * Math.sqrt(3) * e2,
+                    volume: (5 / 12) * (3 + Math.sqrt(5)) * e3
+                };
+            default:
+                return { area: 0, volume: 0 };
+        }
     }
 
     draw(ctx, w, h) {
@@ -384,14 +345,23 @@ export class PlatonicSolidsMode {
 
         const projected = this.vertices.map(v => this.project(v, size, centerX, centerY));
 
-        // Draw faces sorted by depth
-        if (this.faces.length > 0) {
+        // Faces with depth sort + normal-based shading
+        if (this.faces.length > 0 && !this.wireframeOnly) {
+            const lightDir = { x: -0.4, y: -0.6, z: -0.7 };
+            const lLen = Math.hypot(lightDir.x, lightDir.y, lightDir.z);
+            lightDir.x /= lLen; lightDir.y /= lLen; lightDir.z /= lLen;
+
             const faceData = this.faces.map((face, fi) => {
                 const avgZ = face.reduce((sum, vi) => sum + projected[vi].z, 0) / face.length;
                 return { face, fi, avgZ };
             }).sort((a, b) => a.avgZ - b.avgZ);
 
             faceData.forEach(({ face, fi }) => {
+                const n = this.faceNormal(face, projected);
+                // Lambert
+                const dot = n.x * lightDir.x + n.y * lightDir.y + n.z * lightDir.z;
+                const intensity = 0.45 + Math.max(0, dot) * 0.55;
+
                 ctx.beginPath();
                 ctx.moveTo(projected[face[0]].x, projected[face[0]].y);
                 for (let i = 1; i < face.length; i++) {
@@ -400,17 +370,17 @@ export class PlatonicSolidsMode {
                 ctx.closePath();
 
                 const color = this.faceColors[fi % this.faceColors.length];
-                ctx.fillStyle = this.addAlpha(color, 0.5);
+                ctx.fillStyle = this.shadeColor(color, intensity, 0.55);
                 ctx.fill();
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
                 ctx.lineWidth = 1;
                 ctx.stroke();
             });
         }
 
-        // Draw edges
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.lineWidth = 1;
+        // Edges
+        ctx.strokeStyle = this.wireframeOnly ? 'rgba(147, 197, 253, 0.85)' : 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = this.wireframeOnly ? 1.25 : 1;
         this.edges.forEach(([i, j]) => {
             ctx.beginPath();
             ctx.moveTo(projected[i].x, projected[i].y);
@@ -418,59 +388,82 @@ export class PlatonicSolidsMode {
             ctx.stroke();
         });
 
-        // Draw vertices
-        projected.forEach(p => {
+        // Vertices: size scales with z (depth)
+        projected.forEach((p, i) => {
+            const t = (p.z + 1) / 2; // 0..1 (back..front)
+            const r = 1.6 + t * 2.6;
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
-            ctx.fillStyle = '#e2e8f0';
+            ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(226, 232, 240, ${0.55 + t * 0.4})`;
             ctx.fill();
+
+            if (this.showVertexLabels) {
+                ctx.fillStyle = 'rgba(226, 232, 240, 0.85)';
+                ctx.font = '500 10px "JetBrains Mono", monospace';
+                ctx.textAlign = 'left';
+                ctx.fillText(String(i), p.x + 6, p.y - 6);
+            }
         });
 
         this.drawSelector(ctx, w, h);
+        this.drawToggles(ctx, w, h);
         this.drawInfoPanel(ctx, w, h);
     }
 
     drawSelector(ctx, w, h) {
-        const btnW = 40;
-        const btnH = 40;
-        const gap = 10;
-        const totalW = this.solids.length * btnW + (this.solids.length - 1) * gap;
-        const startX = (w - totalW) / 2;
-        const startY = h - 80;
+        const sel = this.getSelectorRect(w, h);
 
-        this.solids.forEach((solid, i) => {
-            const x = startX + i * (btnW + gap);
-            const y = startY;
+        this.solids.forEach((_solid, i) => {
+            const x = sel.startX + i * (sel.btnW + sel.gap);
+            const y = sel.startY;
             const isActive = i === this.currentSolid;
 
-            // Button bg
-            ctx.fillStyle = isActive ? 'rgba(59, 130, 246, 0.3)' : 'rgba(255, 255, 255, 0.05)';
-            ctx.strokeStyle = isActive ? '#3b82f6' : 'rgba(255, 255, 255, 0.1)';
+            ctx.fillStyle = isActive ? 'rgba(96, 165, 250, 0.22)' : 'rgba(255, 255, 255, 0.04)';
+            ctx.strokeStyle = isActive ? 'rgba(96, 165, 250, 0.6)' : 'rgba(255, 255, 255, 0.1)';
             ctx.lineWidth = 1;
 
             ctx.beginPath();
-            ctx.roundRect(x, y, btnW, btnH, 8);
+            ctx.roundRect(x, y, sel.btnW, sel.btnH, 8);
             ctx.fill();
             ctx.stroke();
 
-            // Draw icon
-            this.drawSolidIcon(ctx, x + btnW / 2, y + btnH / 2, i);
+            this.drawSolidIcon(ctx, x + sel.btnW / 2, y + sel.btnH / 2, i, isActive);
         });
     }
 
-    drawSolidIcon(ctx, cx, cy, index) {
-        ctx.strokeStyle = '#e2e8f0';
+    drawToggles(ctx, w, h) {
+        const tog = this.getToggleRect(w, h);
+        tog.buttons.forEach(b => {
+            const active = (b.action === 'wireframe' && this.wireframeOnly) ||
+                           (b.action === 'labels' && this.showVertexLabels);
+            ctx.fillStyle = active ? 'rgba(96, 165, 250, 0.18)' : 'rgba(255, 255, 255, 0.04)';
+            ctx.strokeStyle = active ? 'rgba(96, 165, 250, 0.5)' : 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect(b.x, b.y, b.w, b.h, 6);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = active ? '#93c5fd' : '#cbd5e1';
+            ctx.font = '500 11px Inter';
+            ctx.textAlign = 'center';
+            ctx.fillText(b.label, b.x + b.w / 2, b.y + 18);
+        });
+    }
+
+    drawSolidIcon(ctx, cx, cy, index, active) {
+        ctx.strokeStyle = active ? '#93c5fd' : '#e2e8f0';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         const r = 8;
 
-        if (index === 0) { // Tetrahedron
+        if (index === 0) {
             ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy + r); ctx.lineTo(cx - r, cy + r); ctx.closePath();
-        } else if (index === 1) { // Cube
+        } else if (index === 1) {
             ctx.rect(cx - r, cy - r, r * 2, r * 2);
-        } else if (index === 2) { // Octahedron
+        } else if (index === 2) {
             ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r, cy); ctx.closePath();
-        } else if (index === 3) { // Dodecahedron
+        } else if (index === 3) {
             for (let j = 0; j < 5; j++) {
                 const ang = j * Math.PI * 2 / 5 - Math.PI / 2;
                 const px = cx + r * Math.cos(ang);
@@ -478,7 +471,7 @@ export class PlatonicSolidsMode {
                 if (j === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
             }
             ctx.closePath();
-        } else if (index === 4) { // Icosahedron
+        } else if (index === 4) {
             for (let j = 0; j < 6; j++) {
                 const ang = j * Math.PI * 2 / 6;
                 const px = cx + r * Math.cos(ang);
@@ -486,79 +479,95 @@ export class PlatonicSolidsMode {
                 if (j === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
             }
             ctx.closePath();
-        } else { // Archimedean solids - use simpler icons
-            ctx.arc(cx, cy, r, 0, Math.PI * 2);
         }
         ctx.stroke();
     }
 
-    addAlpha(color, alpha) {
+    shadeColor(color, intensity, baseAlpha) {
+        // intensity: 0..1
+        const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
         if (color.startsWith('#')) {
             const r = parseInt(color.slice(1, 3), 16);
             const g = parseInt(color.slice(3, 5), 16);
             const b = parseInt(color.slice(5, 7), 16);
-            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            return `rgba(${clamp(r * intensity)}, ${clamp(g * intensity)}, ${clamp(b * intensity)}, ${baseAlpha})`;
         }
         if (color.startsWith('hsl')) {
-            return color.replace(')', `, ${alpha})`).replace('hsl', 'hsla');
+            // Convert "hsl(h, s%, l%)" → "hsla(h, s%, l*intensity%, alpha)"
+            const m = color.match(/hsl\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)%\s*,\s*(-?\d+(?:\.\d+)?)%\s*\)/);
+            if (m) {
+                const hh = m[1], ss = m[2], ll = Math.max(0, Math.min(100, parseFloat(m[3]) * intensity));
+                return `hsla(${hh}, ${ss}%, ${ll}%, ${baseAlpha})`;
+            }
         }
         return color;
     }
 
-    drawInfoPanel(ctx, w, h) {
-        const solidNames = ['Tetrahedron', 'Cube', 'Octahedron', 'Dodecahedron', 'Icosahedron', 'Square Pyramid'];
+    drawInfoPanel(ctx, w, _h) {
+        const solidNames = ['Tetrahedron', 'Cube', 'Octahedron', 'Dodecahedron', 'Icosahedron'];
         const solidInfo = [
             { f: 4, v: 4, e: 6, face: 'Triangular', dual: 'Self-dual' },
             { f: 6, v: 8, e: 12, face: 'Square', dual: 'Octahedron' },
             { f: 8, v: 6, e: 12, face: 'Triangular', dual: 'Cube' },
             { f: 12, v: 20, e: 30, face: 'Pentagonal', dual: 'Icosahedron' },
-            { f: 20, v: 12, e: 30, face: 'Triangular', dual: 'Dodecahedron' },
-            { f: 5, v: 5, e: 8, face: 'Tri/Square', dual: 'Self-dual' }
+            { f: 20, v: 12, e: 30, face: 'Triangular', dual: 'Dodecahedron' }
         ];
 
         const info = solidInfo[this.currentSolid];
-        const panelW = 220;
-        const panelH = 160;
-        const x = w - panelW - 24;
-        const y = 80;
+        const props = this.computeProperties(this.solids[this.currentSolid]);
+        const panelW = 240;
+        const panelH = 220;
+        const x = w - panelW - 20;
+        const y = 76;
 
-        // Glass panel
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+        ctx.fillStyle = 'rgba(13, 19, 33, 0.92)';
         ctx.beginPath();
         ctx.roundRect(x, y, panelW, panelH, 12);
         ctx.fill();
-        ctx.strokeStyle = 'rgba(100, 180, 255, 0.2)';
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.18)';
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // Name
         ctx.fillStyle = '#60a5fa';
-        ctx.font = 'bold 16px Inter';
+        ctx.font = '700 11px Inter';
         ctx.textAlign = 'left';
-        ctx.fillText(solidNames[this.currentSolid].toUpperCase(), x + 20, y + 30);
+        ctx.fillText(solidNames[this.currentSolid].toUpperCase(), x + 18, y + 24);
 
-        // Properties
         ctx.fillStyle = '#e2e8f0';
-        ctx.font = '500 13px Inter';
-        ctx.fillText(`Faces: ${info.f} (${info.face})`, x + 20, y + 60);
-        ctx.fillText(`Vertices: ${info.v}`, x + 20, y + 82);
-        ctx.fillText(`Edges: ${info.e}`, x + 20, y + 104);
+        ctx.font = '500 12px Inter';
+        ctx.fillText(`Faces: ${info.f} · ${info.face}`, x + 18, y + 50);
+        ctx.fillText(`Vertices: ${info.v}`, x + 18, y + 70);
+        ctx.fillText(`Edges: ${info.e}`, x + 18, y + 90);
 
-        // Dual
         ctx.fillStyle = '#94a3b8';
         ctx.font = '400 11px Inter';
-        ctx.fillText(`Dual: ${info.dual}`, x + 20, y + 126);
+        ctx.fillText(`Dual: ${info.dual}`, x + 18, y + 110);
 
-        // Euler formula
-        ctx.fillStyle = '#60a5fa';
-        ctx.font = 'bold 14px Inter';
-        ctx.fillText(`V − E + F = ${info.v} − ${info.e} + ${info.f} = 2`, x + 20, y + 150);
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
+        ctx.beginPath();
+        ctx.moveTo(x + 18, y + 124);
+        ctx.lineTo(x + panelW - 18, y + 124);
+        ctx.stroke();
+
+        // Surface area & volume (per unit edge length)
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '600 10px Inter';
+        ctx.fillText('GEOMETRY (a = 1)', x + 18, y + 142);
+
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = '500 11px "JetBrains Mono", monospace';
+        ctx.fillText(`A = ${props.area.toFixed(3)}`, x + 18, y + 162);
+        ctx.fillText(`V = ${props.volume.toFixed(3)}`, x + 18, y + 180);
+
+        ctx.fillStyle = '#4ade80';
+        ctx.font = '700 12px Inter';
+        ctx.fillText(`V − E + F = ${info.v - info.e + info.f}`, x + 18, y + 204);
     }
 
     drawGrid(ctx, w, h) {
-        ctx.strokeStyle = 'rgba(148, 163, 184, 0.04)';
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.035)';
         ctx.lineWidth = 1;
-        const step = Math.min(w, h) / 16;
+        const step = Math.min(w, h) / 18;
 
         for (let x = 0; x < w; x += step) {
             ctx.beginPath();
@@ -578,15 +587,19 @@ export class PlatonicSolidsMode {
         return `
             <div class="control-item">
                 <span class="icon">🤏</span>
-                <span class="text">Left Pinch: Rotate Speed</span>
+                <span class="text">Left pinch · rotate speed</span>
             </div>
             <div class="control-item">
                 <span class="icon">🤏</span>
-                <span class="text">Right Pinch: Zoom Scale</span>
+                <span class="text">Right pinch · zoom scale</span>
             </div>
             <div class="control-item">
                 <span class="icon">🖱️</span>
-                <span class="text">Click icons below to switch shape</span>
+                <span class="text">Drag to rotate · scroll to zoom</span>
+            </div>
+            <div class="control-item">
+                <span class="icon">⏷</span>
+                <span class="text">Toggle wireframe / vertex IDs</span>
             </div>
         `;
     }
